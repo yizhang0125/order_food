@@ -28,26 +28,255 @@ try {
     $error = $e->getMessage();
 }
 
-// Custom CSS with optimized selectors
+// Custom CSS with modern design
 $extra_css = '
 <style>
+:root {
+    --primary: #4F46E5;
+    --primary-light: #818CF8;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --info: #3B82F6;
+    --gray-50: #F9FAFB;
+    --gray-100: #F3F4F6;
+    --gray-200: #E5E7EB;
+    --gray-300: #D1D5DB;
+    --gray-400: #9CA3AF;
+    --gray-500: #6B7280;
+    --gray-600: #4B5563;
+    --gray-700: #374151;
+    --gray-800: #1F2937;
+}
+
+.dashboard-header {
+    background: white;
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.welcome-message {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--gray-800);
+    margin: 0;
+}
+
+.date-display {
+    color: var(--gray-500);
+    font-size: 1.1rem;
+    margin-top: 0.5rem;
+}
+
 .stat-card {
-    transition: transform 0.3s ease;
-    border: none;
-    border-radius: 10px;
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    height: 100%;
+    transition: all 0.3s ease;
+    border: 1px solid var(--gray-200);
+    position: relative;
+    overflow: hidden;
 }
-.stat-card:hover { transform: translateY(-5px) }
-.chart-card {
-    height: 400px;
-    border: none;
-    border-radius: 10px;
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
-.activity-item {
+
+.stat-card::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 100px;
+    height: 100px;
+    background: currentColor;
+    opacity: 0.1;
+    border-radius: 50%;
+    transform: translate(30%, -30%);
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover::after {
+    transform: translate(25%, -25%) scale(1.1);
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.stat-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--gray-800);
+    margin-bottom: 0.25rem;
+}
+
+.stat-change {
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.stat-change.positive {
+    color: var(--success);
+}
+
+.stat-change.negative {
+    color: var(--danger);
+}
+
+.recent-orders {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.orders-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.orders-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--gray-800);
+    margin: 0;
+}
+
+.view-all {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.view-all:hover {
+    transform: translateX(5px);
+    color: var(--primary-light);
+}
+
+.order-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 0.75rem;
+}
+
+.order-table th {
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    color: var(--gray-600);
+    background: var(--gray-50);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+}
+
+.order-table td {
     padding: 1rem;
-    border-radius: 8px;
-    transition: background-color 0.3s;
+    background: white;
+    border-top: 1px solid var(--gray-200);
+    border-bottom: 1px solid var(--gray-200);
 }
-.activity-item:hover { background: rgba(67, 97, 238, 0.05) }
+
+.order-table tr td:first-child {
+    border-left: 1px solid var(--gray-200);
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.order-table tr td:last-child {
+    border-right: 1px solid var(--gray-200);
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.order-id {
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.status-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.status-badge.completed {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.status-badge.processing {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--info);
+}
+
+.status-badge.pending {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--warning);
+}
+
+.refresh-btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    color: var(--gray-700);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.refresh-btn:hover {
+    background: var(--gray-50);
+    transform: translateY(-2px);
+}
+
+.refresh-btn i {
+    transition: transform 0.5s ease;
+}
+
+.refresh-btn:hover i {
+    transform: rotate(180deg);
+}
 </style>';
 
 // Start output buffering
@@ -55,15 +284,10 @@ ob_start();
 ?>
 
 <div class="container-fluid">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h1 class="h3 mb-0">Dashboard</h1>
-            <p class="text-muted">Welcome back, <?php echo htmlspecialchars($username); ?></p>
-        </div>
-        <button type="button" class="btn btn-light" id="refreshStats">
-            <i class="fas fa-sync-alt"></i> Refresh
-        </button>
+    <!-- Dashboard Header -->
+    <div class="dashboard-header">
+        <h1 class="welcome-message">Welcome back, <?php echo htmlspecialchars($username); ?></h1>
+        <p class="date-display"><?php echo date("l, F j, Y"); ?></p>
     </div>
 
     <?php if (isset($error)): ?>
@@ -74,120 +298,112 @@ ob_start();
     <?php endif; ?>
 
     <!-- Statistics Cards -->
-    <div class="row g-4 mb-4">
+    <div class="row g-4">
         <div class="col-12 col-sm-6 col-xl-3">
-            <div class="card stat-card bg-primary text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="card-title mb-0">Today's Orders</h6>
-                            <h2 class="mt-2 mb-0"><?php echo $stats['total_orders'] ?? 0; ?></h2>
-                        </div>
-                        <div class="rounded-circle bg-white bg-opacity-25 p-3">
-                            <i class="fas fa-shopping-cart fa-2x text-white"></i>
-                        </div>
-                    </div>
+            <div class="stat-card" style="color: var(--primary);">
+                <div class="stat-icon" style="background: rgba(79, 70, 229, 0.1); color: var(--primary);">
+                    <i class="fas fa-shopping-cart"></i>
+                </div>
+                <h6 class="stat-title">Today\'s Orders</h6>
+                <div class="stat-value"><?php echo $stats['total_orders'] ?? 0; ?></div>
+                <div class="stat-change positive">
+                    <i class="fas fa-arrow-up"></i>
+                    <span>12.5% vs yesterday</span>
                 </div>
             </div>
         </div>
 
         <div class="col-12 col-sm-6 col-xl-3">
-            <div class="card stat-card bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="card-title mb-0">Today's Revenue</h6>
-                            <h2 class="mt-2 mb-0">$<?php echo number_format($stats['total_revenue'] ?? 0, 2); ?></h2>
-                        </div>
-                        <div class="rounded-circle bg-white bg-opacity-25 p-3">
-                            <i class="fas fa-dollar-sign fa-2x text-white"></i>
-                        </div>
-                    </div>
+            <div class="stat-card" style="color: var(--success);">
+                <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">
+                    <i class="fas fa-dollar-sign"></i>
+                </div>
+                <h6 class="stat-title">Today\'s Revenue</h6>
+                <div class="stat-value">RM <?php echo number_format($stats['total_revenue'] ?? 0, 2); ?></div>
+                <div class="stat-change positive">
+                    <i class="fas fa-arrow-up"></i>
+                    <span>8.2% vs yesterday</span>
                 </div>
             </div>
         </div>
 
         <div class="col-12 col-sm-6 col-xl-3">
-            <div class="card stat-card bg-info text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="card-title mb-0">Active Tables</h6>
-                            <h2 class="mt-2 mb-0"><?php echo $stats['active_tables'] ?? 0; ?></h2>
-                        </div>
-                        <div class="rounded-circle bg-white bg-opacity-25 p-3">
-                            <i class="fas fa-chair fa-2x text-white"></i>
-                        </div>
-                    </div>
+            <div class="stat-card" style="color: var(--info);">
+                <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: var(--info);">
+                    <i class="fas fa-chair"></i>
+                </div>
+                <h6 class="stat-title">Active Tables</h6>
+                <div class="stat-value"><?php echo $stats['active_tables'] ?? 0; ?></div>
+                <div class="stat-change positive">
+                    <i class="fas fa-arrow-up"></i>
+                    <span>4.3% vs last hour</span>
                 </div>
             </div>
         </div>
 
         <div class="col-12 col-sm-6 col-xl-3">
-            <div class="card stat-card bg-warning text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="card-title mb-0">Menu Items</h6>
-                            <h2 class="mt-2 mb-0"><?php echo $stats['total_items'] ?? 0; ?></h2>
-                        </div>
-                        <div class="rounded-circle bg-white bg-opacity-25 p-3">
-                            <i class="fas fa-utensils fa-2x text-white"></i>
-                        </div>
-                    </div>
+            <div class="stat-card" style="color: var(--warning);">
+                <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1); color: var(--warning);">
+                    <i class="fas fa-utensils"></i>
+                </div>
+                <h6 class="stat-title">Menu Items</h6>
+                <div class="stat-value"><?php echo $stats['total_items'] ?? 0; ?></div>
+                <div class="stat-change negative">
+                    <i class="fas fa-arrow-down"></i>
+                    <span>2.1% vs last week</span>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Recent Orders -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h5 class="card-title mb-0">Recent Orders</h5>
-                        <a href="orders.php" class="btn btn-light btn-sm">View All</a>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Order ID</th>
-                                    <th>Table</th>
-                                    <th>Items</th>
-                                    <th>Total</th>
-                                    <th>Status</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($recentOrders as $order): ?>
-                                <tr>
-                                    <td>#<?php echo $order['id']; ?></td>
-                                    <td><?php echo htmlspecialchars($order['table_name']); ?></td>
-                                    <td><?php echo $order['item_count']; ?> items</td>
-                                    <td>$<?php echo number_format($order['total_amount'], 2); ?></td>
-                                    <td>
-                                        <span class="badge bg-<?php 
-                                            echo match($order['status']) {
-                                                'completed' => 'success',
-                                                'processing' => 'primary',
-                                                'pending' => 'warning',
-                                                default => 'secondary'
-                                            };
-                                        ?>">
-                                            <?php echo ucfirst($order['status']); ?>
-                                        </span>
-                                    </td>
-                                    <td><?php echo date('H:i', strtotime($order['created_at'])); ?></td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+    <div class="recent-orders">
+        <div class="orders-header">
+            <h5 class="orders-title">Recent Orders</h5>
+            <a href="orders.php" class="view-all">
+                View All Orders
+                <i class="fas fa-arrow-right"></i>
+            </a>
+        </div>
+        <div class="table-responsive">
+            <table class="order-table">
+                <thead>
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Table</th>
+                        <th>Items</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($recentOrders as $order): ?>
+                    <tr>
+                        <td>
+                            <span class="order-id">#<?php echo str_pad($order['id'], 4, '0', STR_PAD_LEFT); ?></span>
+                        </td>
+                        <td>Table <?php echo htmlspecialchars($order['table_name']); ?></td>
+                        <td><?php echo $order['item_count']; ?> items</td>
+                        <td>RM <?php echo number_format($order['total_amount'], 2); ?></td>
+                        <td>
+                            <span class="status-badge <?php echo $order['status']; ?>">
+                                <i class="fas fa-<?php 
+                                    echo match($order['status']) {
+                                        'completed' => 'check-circle',
+                                        'processing' => 'clock',
+                                        'pending' => 'hourglass',
+                                        default => 'info-circle'
+                                    };
+                                ?>"></i>
+                                <?php echo ucfirst($order['status']); ?>
+                            </span>
+                        </td>
+                        <td><?php echo date('h:i A', strtotime($order['created_at'])); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -195,12 +411,27 @@ ob_start();
 <?php
 $content = ob_get_clean();
 
-// Add JavaScript for refresh functionality
+// Add JavaScript for refresh functionality and animations
 $extra_js = '
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    document.getElementById("refreshStats").addEventListener("click", function() {
-        location.reload();
+    const refreshBtn = document.getElementById("refreshStats");
+    
+    if (refreshBtn) {
+        refreshBtn.addEventListener("click", function() {
+            const icon = this.querySelector("i");
+            icon.style.transform = "rotate(180deg)";
+            setTimeout(() => location.reload(), 500);
+        });
+    }
+
+    // Animate stats on load
+    const statCards = document.querySelectorAll(".stat-card");
+    statCards.forEach((card, index) => {
+        setTimeout(() => {
+            card.style.opacity = "1";
+            card.style.transform = "translateY(0)";
+        }, index * 100);
     });
 });
 </script>';

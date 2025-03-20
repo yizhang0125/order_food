@@ -1,0 +1,740 @@
+:root {
+    --primary-color: #2563eb;
+    --secondary-color: #1d4ed8;
+    --accent-color: #3b82f6;
+    --background-color: #f8fafc;
+    --text-color: #1e293b;
+    --card-background: #ffffff;
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: var(--background-color);
+    padding-top: 140px !important;
+    color: var(--text-color);
+}
+
+/* Navbar Styles */
+.navbar {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    padding: 1rem 0;
+    top: 0 !important;
+    z-index: 1030;
+    height: auto;
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.navbar.nav-up {
+    transform: translateY(-100%);
+}
+
+.navbar-brand {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color) !important;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.navbar-brand i {
+    font-size: 1.8rem;
+}
+
+/* Category Navigation */
+.category-nav {
+    position: fixed;
+    top: 75px;
+    left: 0;
+    right: 0;
+    width: 100%;
+    background: var(--card-background);
+    z-index: 1020;
+    padding: 0.8rem 0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    transition: top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* When navbar is hidden, move category nav to top */
+.navbar.nav-up ~ .category-nav {
+    top: 0 !important;
+}
+
+/* Remove unused classes */
+.category-nav.nav-up,
+.navbar.nav-up + .category-nav {
+    transform: none;
+}
+
+.nav-scroll-wrapper {
+    position: relative;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.nav-scroll-wrapper::-webkit-scrollbar {
+    display: none;
+}
+
+.category-nav .nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    padding: 0.5rem;
+}
+
+.category-nav .nav-link {
+    color: var(--text-color);
+    padding: 0.75rem 1.5rem;
+    border-radius: 50px;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    font-weight: 500;
+    background: transparent;
+    border: 2px solid transparent;
+}
+
+.category-nav .nav-link:hover {
+    color: var(--primary-color);
+    background: rgba(37, 99, 235, 0.1);
+    transform: translateY(-1px);
+}
+
+.category-nav .nav-link.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+/* Menu Section Styles */
+.menu-section {
+    padding: 3rem 0;
+}
+
+/* Add this new rule for the first category section */
+.menu-section:first-of-type {
+    padding-top: 2rem;
+    margin-top: 2rem;
+}
+
+.category-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-color);
+    margin-bottom: 2rem;
+    margin-top: 1rem;
+    position: relative;
+    display: inline-block;
+}
+
+.category-title::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 0;
+    width: 50%;
+    height: 4px;
+    background: var(--primary-color);
+    border-radius: 2px;
+}
+
+/* Add responsive adjustments for PC */
+@media (min-width: 992px) {
+    body {
+        padding-top: 180px !important;
+    }
+    
+    .menu-section:first-of-type {
+        padding-top: 3rem;
+    }
+}
+
+/* Menu Item Card Styles */
+.menu-item-card {
+    border: none;
+    border-radius: 20px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    height: 100%;
+    background: var(--card-background);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.menu-item-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.menu-item-image {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+}
+
+.menu-item-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: all 0.3s ease;
+}
+
+/* Desktop (Large Screens) */
+@media (min-width: 1200px) {
+    .menu-item-image {
+        height: 300px;
+    }
+    
+    .menu-item-image img {
+        object-position: center 30%;
+    }
+}
+
+/* Desktop (Normal) */
+@media (min-width: 992px) and (max-width: 1199px) {
+    .menu-item-image {
+        height: 280px;
+    }
+    
+    .menu-item-image img {
+        object-position: center 30%;
+    }
+}
+
+/* Tablets (Landscape) */
+@media (min-width: 768px) and (max-width: 991px) {
+    .menu-item-image {
+        height: 260px;
+    }
+    
+    .menu-item-image img {
+        object-position: center 25%;
+    }
+}
+
+/* Tablets (Portrait) and Large Phones */
+@media (min-width: 576px) and (max-width: 767px) {
+    .menu-item-image {
+        height: 240px;
+    }
+    
+    .menu-item-image img {
+        object-position: center 25%;
+    }
+}
+
+/* Large Phones (iPhone 14 Pro Max, etc.) */
+@media (min-width: 428px) and (max-width: 575px) {
+    .menu-item-image {
+        height: 220px;
+    }
+    
+    .menu-item-image img {
+        object-position: center 20%;
+    }
+}
+
+/* Medium Phones */
+@media (min-width: 375px) and (max-width: 427px) {
+    .menu-item-image {
+        height: 200px;
+    }
+    
+    .menu-item-image img {
+        object-position: center 20%;
+    }
+}
+
+/* Small Phones */
+@media (max-width: 374px) {
+    .menu-item-image {
+        height: 180px;
+    }
+    
+    .menu-item-image img {
+        object-position: center 20%;
+    }
+}
+
+/* Device-specific optimizations */
+/* iPhone Pro Max Models */
+@media only screen and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3),
+       only screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) {
+    .menu-item-image {
+        height: 240px;
+    }
+}
+
+/* iPhone Pro Models */
+@media only screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3),
+       only screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) {
+    .menu-item-image {
+        height: 220px;
+    }
+}
+
+/* For tall aspect ratio phones */
+@media (max-width: 767px) and (min-height: 800px) {
+    .menu-item-image {
+        height: 240px;
+    }
+}
+
+/* Loading state */
+.menu-item-image.loading {
+    background: linear-gradient(110deg, #ececec 8%, #f5f5f5 18%, #ececec 33%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s linear infinite;
+}
+
+/* Enhanced hover effects */
+.menu-item-card:hover .menu-item-image img {
+    transform: scale(1.1) translateY(-2%);
+}
+
+/* Smooth transitions */
+.menu-item-image img {
+    transition: transform 0.5s ease, object-position 0.3s ease;
+}
+
+.menu-item-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 0.5rem 1rem;
+    border-radius: 50px;
+    font-weight: 600;
+    color: var(--primary-color);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.menu-item-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 0.5rem;
+}
+
+.menu-item-description {
+    color: #64748b;
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.menu-item-price {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+/* Add to Cart Button Styles */
+.order-button {
+    width: 100%;
+    padding: 12px 24px;
+    background-color: #4361EE;
+    border: none;
+    border-radius: 50px;
+    color: white;
+    font-weight: 600;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(67, 97, 238, 0.3);
+}
+
+.order-button i {
+    font-size: 1rem;
+}
+
+.order-button.added {
+    background-color: #10b981; /* Success green color */
+}
+
+.order-button.added i {
+    transform: rotate(45deg);
+}
+
+/* Change the icon class in your HTML from fa-plus to fa-plus when added */
+.order-button:not(.added) i {
+    transform: rotate(0deg);
+}
+
+.order-button:hover {
+    background-color: #3651DB;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(67, 97, 238, 0.4);
+}
+
+.order-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(67, 97, 238, 0.2);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .order-button {
+        padding: 10px 20px;
+        font-size: 0.95rem;
+    }
+}
+
+/* Cart Icon Styles */
+.cart-icon,
+.cart-badge {
+    display: none;
+}
+
+/* Table Info Banner Styles */
+.table-info-banner {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.8));
+    backdrop-filter: blur(10px);
+    padding: 8px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    margin: 0 15px;
+    transition: all 0.3s ease;
+}
+
+.table-info-banner:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+}
+
+.table-info-banner .table-number {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary-color);
+    letter-spacing: 0.5px;
+}
+
+/* View Orders Button Styles */
+.view-orders-btn {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.5rem 1.25rem;
+    border-radius: 50px;
+    font-weight: 500;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.view-orders-btn:hover {
+    background: var(--secondary-color);
+    transform: translateY(-2px);
+    color: white;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.view-orders-btn i {
+    font-size: 1rem;
+}
+
+/* Animation Classes */
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Floating Cart Styles */
+.floating-cart {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 1030;
+}
+
+.cart-button {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    border: none;
+    color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    position: relative;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cart-button:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
+    background: var(--secondary-color);
+}
+
+.cart-button i {
+    font-size: 1.5rem;
+}
+
+.cart-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: #ef4444;
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Cart Animation Styles */
+.parabolic-item {
+    position: fixed;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+.parabolic-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.cart-button.pop {
+    animation: pop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+
+/* Responsive Styles */
+@media (max-width: 992px) {
+    body {
+        padding-top: 130px !important;
+    }
+
+    .navbar.nav-up ~ .category-nav {
+        top: 0 !important;
+    }
+}
+
+@media (max-width: 768px) {
+    body {
+        padding-top: 150px !important;
+    }
+
+    .navbar {
+        padding: 0.5rem 0;
+    }
+
+    .navbar.nav-up ~ .category-nav {
+        top: 0 !important;
+    }
+
+    .category-nav .nav-link {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+
+    .menu-item-image {
+        height: 240px; /* Fixed height for tablets */
+    }
+
+    .menu-item-title {
+        font-size: 1.1rem;
+    }
+
+    .menu-item-price {
+        font-size: 1.25rem;
+    }
+
+    .order-button {
+        padding: 10px 20px;
+        font-size: 0.95rem;
+    }
+
+    .order-button i {
+        font-size: 1rem;
+    }
+
+    .view-orders-btn {
+        padding: 0.4rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    .table-info-banner {
+        margin: 0 10px;
+        padding: 6px 12px;
+    }
+
+    .table-info-banner .table-number {
+        font-size: 14px;
+    }
+
+    .floating-cart {
+        bottom: 1rem;
+        right: 1rem;
+    }
+
+    .cart-button {
+        width: 50px;
+        height: 50px;
+    }
+
+    .cart-button i {
+        font-size: 1.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    body {
+        padding-top: 120px !important;
+    }
+
+    .navbar {
+        padding: 0.4rem 0;
+    }
+
+    .navbar.nav-up ~ .category-nav {
+        top: 0 !important;
+    }
+
+    .category-nav .nav-link {
+        padding: 0.35rem 0.7rem;
+        font-size: 0.8rem;
+    }
+
+    .table-info-banner {
+        margin: 0 8px;
+        padding: 4px 10px;
+    }
+
+    .table-info-banner .table-number {
+        font-size: 13px;
+    }
+
+    .cart-badge {
+        width: 20px;
+        height: 20px;
+        font-size: 0.75rem;
+    }
+
+    .menu-item-image {
+        height: 200px; /* Fixed height for mobile */
+    }
+    
+    .menu-item-card {
+        margin-bottom: 1rem;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 360px) {
+    .navbar.nav-up ~ .category-nav {
+        top: 0 !important;
+    }
+}
+
+/* Remove unused animations */
+@keyframes slideDown {
+    from { transform: translateY(0); }
+    to { transform: translateY(-100%); }
+}
+
+/* Responsive adjustments */
+@media (min-width: 992px) {
+    .menu-item-image {
+        height: 280px; /* Fixed height for desktop */
+    }
+}
+
+/* Add loading state for images */
+@keyframes shimmer {
+    to {
+        background-position: -200% 0;
+    }
+}
+
+/* Responsive adjustments for modern devices */
+@media (min-width: 992px) {
+    .menu-item-image {
+        aspect-ratio: 21/9; /* Keep extra wide ratio for desktop */
+    }
+}
+
+/* Tablets and smaller laptops */
+@media (min-width: 768px) and (max-width: 991px) {
+    .menu-item-image {
+        aspect-ratio: 21/9; /* Keep extra wide ratio for tablets */
+    }
+}
+
+/* Large phones (iPhone 14 Pro Max, etc.) */
+@media (min-width: 428px) and (max-width: 767px) {
+    .menu-item-image {
+        aspect-ratio: 21/9; /* Keep extra wide ratio for large phones */
+    }
+}
+
+/* Medium and small phones */
+@media (max-width: 427px) {
+    .menu-item-image {
+        aspect-ratio: 21/9; /* Keep extra wide ratio for smaller phones */
+    }
+}
+
+/* Add these new styles for better image handling */
+@media (min-width: 428px) and (max-width: 767px) and (min-height: 800px) {
+    /* Specifically for tall phones like iPhone 14 Pro Max */
+    .menu-item-image {
+        height: 200px; /* Even taller for Pro Max sized phones */
+    }
+}
+
+/* For devices with notches/dynamic island */
+@supports (padding-top: env(safe-area-inset-top)) {
+    @media (min-width: 428px) and (max-width: 767px) {
+        .menu-item-image {
+            height: calc(190px + env(safe-area-inset-top) / 4);
+        }
+    }
+} 

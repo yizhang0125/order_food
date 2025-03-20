@@ -64,26 +64,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
     background: rgba(67, 97, 238, 0.1);
 }
 
-.search-box {
-    width: 300px;
-    position: relative;
-}
-
-.search-box input {
-    padding-left: 40px;
-    border-radius: 10px;
-    border: 1px solid rgba(0,0,0,0.1);
-    background: #f8f9fa;
-}
-
-.search-box i {
-    position: absolute;
-    left: 15px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #999;
-}
-
 .notification-btn {
     width: 40px;
     height: 40px;
@@ -170,10 +150,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
         border: none;
     }
     
-    .search-box {
-        display: none;
-    }
-    
     .user-info {
         display: none;
     }
@@ -197,14 +173,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <i class="fas fa-bars" style="color: var(--primary-color); font-size: 1.4rem;"></i>
         </button>
 
-        <!-- Search Box -->
-        <div class="search-box me-auto">
-            <i class="fas fa-search"></i>
-            <input type="text" class="form-control" placeholder="Search...">
-        </div>
-
         <!-- Right Menu Items -->
-        <div class="d-flex align-items-center">
+        <div class="d-flex align-items-center ms-auto">
             <!-- Notifications -->
             <div class="dropdown me-3">
                 <button class="btn notification-btn" data-bs-toggle="dropdown">

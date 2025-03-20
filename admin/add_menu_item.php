@@ -24,31 +24,51 @@ $message_type = '';
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     try {
+        // Validate price format
+        $price = str_replace(['RM', ' ', ','], '', $_POST['price']);
+        if (!is_numeric($price)) {
+            throw new Exception("Invalid price format. Please enter a valid number.");
+        }
+        
         $data = [
             'name' => $_POST['name'],
             'description' => $_POST['description'],
-            'price' => $_POST['price'],
+            'price' => $price,
             'category_id' => $_POST['category_id'],
             'status' => 'available'
         ];
 
-        // Handle image upload if present
+        // Handle image upload
         if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
-            $image_path = $menuItemModel->uploadImage($_FILES['image']);
-            if ($image_path) {
-                $data['image_path'] = $image_path;
+            $target_dir = "../uploads/menu_items/";
+            if (!file_exists($target_dir)) {
+                mkdir($target_dir, 0777, true);
+            }
+
+            $file_extension = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
+            $new_filename = uniqid() . '.' . $file_extension;
+            $target_file = $target_dir . $new_filename;
+
+            // Validate file type
+            $allowed_types = ['jpg', 'jpeg', 'png', 'gif'];
+            if (!in_array($file_extension, $allowed_types)) {
+                throw new Exception("Only JPG, JPEG, PNG & GIF files are allowed.");
+            }
+
+            if (move_uploaded_file($_FILES['image']['tmp_name'], $target_file)) {
+                $data['image_path'] = 'uploads/menu_items/' . $new_filename;
+            } else {
+                throw new Exception("Failed to upload image.");
             }
         }
 
         if ($menuItemModel->create($data)) {
-            $message = "Menu item added successfully!";
-            $message_type = "success";
-            // Clear form data after successful submission
-            $_POST = array();
+            $_SESSION['success'] = "Menu item added successfully!";
+            header('Location: menu_management.php');
+            exit();
         }
     } catch (Exception $e) {
-        $message = "Error: " . $e->getMessage();
-        $message_type = "danger";
+        $error = $e->getMessage();
     }
 }
 
@@ -176,6 +196,135 @@ $extra_css = '
     background: #fff;
     color: #dc3545;
 }
+
+.input-group-text {
+    background: #f8f9fa;
+    border: 2px solid #E5E7EB;
+    border-right: none;
+    font-weight: 600;
+    color: #4B5563;
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+}
+
+input[name="price"] {
+    border-left: none;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #1F2937;
+}
+
+input[name="price"]:focus {
+    border-left: none;
+    box-shadow: none;
+}
+
+.input-group:focus-within {
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+}
+
+.input-group:focus-within .input-group-text {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.input-group:focus-within input[name="price"] {
+    border-color: var(--primary);
+}
+
+/* Price preview styling */
+.price-preview {
+    font-size: 1.25rem;
+    color: var(--primary);
+    font-weight: 600;
+    margin-top: 0.5rem;
+    display: none;
+}
+
+.price-preview.show {
+    display: block;
+}
+
+.price-input-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.price-input-group .currency-symbol {
+    position: absolute;
+    left: 1rem;
+    color: #6B7280;
+    font-weight: 500;
+    z-index: 2;
+}
+
+.price-input {
+    padding-left: 3rem !important;
+    border: 1px solid #E5E7EB !important;
+    border-radius: 0.5rem !important;
+    height: calc(3rem + 2px) !important;
+    width: 100% !important;
+    font-size: 1rem !important;
+    line-height: 1.5 !important;
+    background-color: #fff !important;
+}
+
+.price-input:focus {
+    border-color: #4F46E5 !important;
+    box-shadow: 0 0 0 0.2rem rgba(79, 70, 229, 0.25) !important;
+    outline: none !important;
+}
+
+.price-validation {
+    display: none;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+.price-validation.invalid {
+    color: #EF4444;
+    display: block;
+}
+
+.price-validation.valid {
+    color: #10B981;
+    display: block;
+}
+
+.form-label {
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
+
+.image-preview {
+    width: 200px;
+    height: 200px;
+    border-radius: 0.5rem;
+    border: 2px dashed #E5E7EB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1rem;
+    overflow: hidden;
+}
+
+.image-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: cover;
+}
+
+.preview-placeholder {
+    color: #9CA3AF;
+    text-align: center;
+}
+
+.preview-placeholder i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
 </style>';
 
 // Start output buffering
@@ -231,15 +380,20 @@ ob_start();
                                     </select>
                                 </div>
                                 
+                                <!-- Price Input with RM -->
                                 <div class="col-md-6">
-                                    <label class="form-label">Price</label>
-                                    <div class="input-group input-group-lg">
-                                        <span class="input-group-text price-symbol">$</span>
-                                        <input type="number" class="form-control price-input" name="price" 
-                                               step="0.01" min="0" required 
-                                               value="<?php echo htmlspecialchars($_POST['price'] ?? ''); ?>"
-                                               placeholder="0.00">
+                                    <label class="form-label">Price (RM)</label>
+                                    <div class="price-input-group">
+                                        <span class="currency-symbol">RM</span>
+                                        <input type="text" 
+                                               class="form-control form-control-lg price-input" 
+                                               name="price" 
+                                               id="price"
+                                               required
+                                               placeholder="0.00"
+                                               pattern="^\d*\.?\d{0,2}$">
                                     </div>
+                                    <div class="price-validation"></div>
                                 </div>
                             </div>
                             
@@ -384,6 +538,79 @@ document.addEventListener("DOMContentLoaded", function() {
         if (parseFloat(price) <= 0) {
             event.preventDefault();
             alert("Price must be greater than 0");
+        }
+    });
+});
+</script>';
+
+// Add JavaScript for price formatting and validation
+$extra_js .= '
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const priceInput = document.getElementById("price");
+    const priceValidation = document.querySelector(".price-validation");
+    
+    // Format price input
+    priceInput.addEventListener("input", function(e) {
+        let value = e.target.value;
+        
+        // Remove any non-numeric characters except decimal point
+        value = value.replace(/[^\d.]/g, "");
+        
+        // Ensure only one decimal point
+        const decimalPoints = value.match(/\./g);
+        if (decimalPoints && decimalPoints.length > 1) {
+            value = value.replace(/\.+$/, "");
+        }
+        
+        // Limit to two decimal places
+        if (value.includes(".")) {
+            const parts = value.split(".");
+            value = parts[0] + "." + (parts[1] || "").slice(0, 2);
+        }
+        
+        // Update input value
+        e.target.value = value;
+        
+        // Validate price
+        if (value === "") {
+            priceValidation.textContent = "Price is required";
+            priceValidation.className = "price-validation invalid";
+        } else if (isNaN(value) || parseFloat(value) <= 0) {
+            priceValidation.textContent = "Please enter a valid price";
+            priceValidation.className = "price-validation invalid";
+        } else {
+            priceValidation.textContent = "Valid price format";
+            priceValidation.className = "price-validation valid";
+        }
+    });
+    
+    // Format on blur
+    priceInput.addEventListener("blur", function(e) {
+        const value = e.target.value;
+        if (value && !isNaN(value)) {
+            e.target.value = parseFloat(value).toFixed(2);
+        }
+    });
+    
+    // Image preview
+    const imageInput = document.getElementById("imageInput");
+    const imagePreview = document.getElementById("imagePreview");
+    
+    imageInput.addEventListener("change", function() {
+        const file = this.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+            };
+            reader.readAsDataURL(file);
+        } else {
+            imagePreview.innerHTML = `
+                <div class="preview-placeholder">
+                    <i class="fas fa-image"></i>
+                    <p>Image preview will appear here</p>
+                </div>`;
         }
     });
 });

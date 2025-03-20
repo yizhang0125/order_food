@@ -1,5 +1,12 @@
 <?php
-require_once __DIR__ . '/../../vendor/phpqrcode/qrlib.php';
+$qrlib_path = __DIR__ . '/../../vendor/phpqrcode/qrlib.php';
+
+if (!file_exists($qrlib_path)) {
+    die("phpqrcode library not found. Please install it in vendor/phpqrcode directory.<br>
+         You can download it from http://phpqrcode.sourceforge.net/ or use git clone https://github.com/t0k4rt/phpqrcode.git");
+}
+
+require_once $qrlib_path;
 
 class QRCodeManager {
     private $db;
@@ -134,15 +141,16 @@ class QRCodeManager {
 
     public function generateQRCode($table_id, $table_number, $within_transaction = false) {
         try {
-            // Debug logging
             error_log("Starting QR code generation for table " . $table_number);
-            error_log("QR directory: " . $this->qr_dir);
             
             if (!$within_transaction) {
+                error_log("Starting new transaction");
                 $transaction_started = $this->db->beginTransaction();
                 if (!$transaction_started) {
+                    error_log("Failed to start transaction");
                     throw new Exception("Could not start database transaction");
                 }
+                error_log("Transaction started successfully");
             }
             
             // Check if phpqrcode library exists
@@ -206,11 +214,34 @@ class QRCodeManager {
             $get_old_qr_stmt->execute([$table_id]);
             $old_qr_codes = $get_old_qr_stmt->fetchAll(PDO::FETCH_ASSOC);
             
+            error_log("Found " . count($old_qr_codes) . " old QR codes to delete");
+
             foreach ($old_qr_codes as $old_qr) {
                 if (!empty($old_qr['image_path'])) {
                     $old_file_path = $this->qr_dir . DIRECTORY_SEPARATOR . $old_qr['image_path'];
+                    
+                    // Check directory permissions
+                    error_log("QR directory permissions: " . substr(sprintf('%o', fileperms($this->qr_dir)), -4));
+                    
+                    // Check if PHP has write permissions
+                    if (!is_writable($this->qr_dir)) {
+                        error_log("Warning: QR directory is not writable: " . $this->qr_dir);
+                    }
+                    
                     if (file_exists($old_file_path)) {
-                        unlink($old_file_path);
+                        if (!is_writable($old_file_path)) {
+                            error_log("Warning: QR file is not writable: " . $old_file_path);
+                        }
+                        error_log("Attempting to delete file: " . $old_file_path);
+                        
+                        if (unlink($old_file_path)) {
+                            error_log("Successfully deleted file: " . $old_file_path);
+                        } else {
+                            error_log("Failed to delete file: " . $old_file_path);
+                            error_log("File permissions: " . substr(sprintf('%o', fileperms($old_file_path)), -4));
+                        }
+                    } else {
+                        error_log("File does not exist: " . $old_file_path);
                     }
                 }
             }
@@ -232,7 +263,9 @@ class QRCodeManager {
             }
             
             if (!$within_transaction) {
+                error_log("Committing transaction");
                 $this->db->commit();
+                error_log("Transaction committed successfully");
             }
             
             error_log("QR code generation completed successfully");
@@ -251,7 +284,7 @@ class QRCodeManager {
             ];
             
         } catch (Exception $e) {
-            error_log("QR code generation error: " . $e->getMessage());
+            error_log("Error in generateQRCode: " . $e->getMessage());
             error_log("Stack trace: " . $e->getTraceAsString());
             
             if (!$within_transaction && $this->db->inTransaction()) {

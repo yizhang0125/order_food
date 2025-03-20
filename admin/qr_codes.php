@@ -154,25 +154,100 @@ function deactivateQRCode($db, $table_id) {
     }
 }
 
+// Add this function after the database connection setup
+function deactivateQRCodeAfterOrderCompletion($db, $table_id) {
+    try {
+        // Start transaction
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $db->beginTransaction();
+        
+        // Get current active QR code
+        $get_qr_query = "SELECT id, image_path FROM qr_codes 
+                        WHERE table_id = ? AND is_active = 1";
+        $get_qr_stmt = $db->prepare($get_qr_query);
+        $get_qr_stmt->execute([$table_id]);
+        $qr_code = $get_qr_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($qr_code) {
+            // Deactivate the QR code
+            $update_query = "UPDATE qr_codes 
+                           SET is_active = 0, 
+                               expires_at = NOW() 
+                           WHERE id = ?";
+            $update_stmt = $db->prepare($update_query);
+            $update_stmt->execute([$qr_code['id']]);
+            
+            // Delete physical QR code file if it exists
+            if (!empty($qr_code['image_path'])) {
+                $qr_file_path = __DIR__ . "/../uploads/qrcodes/" . basename($qr_code['image_path']);
+                if (file_exists($qr_file_path)) {
+                    unlink($qr_file_path);
+                }
+            }
+        }
+        
+        $db->commit();
+        return true;
+    } catch (Exception $e) {
+        $db->rollBack();
+        error_log("Error deactivating QR code: " . $e->getMessage());
+        return false;
+    }
+}
+
 // Add this to handle order completion
 if (isset($_POST['complete_order'])) {
     $table_id = $_POST['table_id'];
+    $order_id = $_POST['order_id'];
     
     try {
-        if (deactivateQRCode($db, $table_id)) {
-            $message = "Order completed and QR code deactivated successfully";
+        // Start transaction
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $db->beginTransaction();
+        
+        // Update order status to completed
+        $update_order_query = "UPDATE orders SET status = 'completed' WHERE id = ?";
+        $update_order_stmt = $db->prepare($update_order_query);
+        $update_order_stmt->execute([$order_id]);
+        
+        // Deactivate QR code
+        if (deactivateQRCodeAfterOrderCompletion($db, $table_id)) {
+            $db->commit();
+            $message = "Order completed and QR code deactivated successfully.";
             $message_type = "success";
         } else {
             throw new Exception("Failed to deactivate QR code");
         }
         
-        // Refresh table data
-        $tables = $qrCode->getAllTables();
+        // Check if table has any other active orders
+        $check_orders_query = "SELECT COUNT(*) as active_orders 
+                             FROM orders 
+                             WHERE table_id = ? 
+                             AND status IN ('pending', 'processing')";
+        $check_stmt = $db->prepare($check_orders_query);
+        $check_stmt->execute([$table_id]);
+        $result = $check_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // If no active orders, mark table as available
+        if ($result['active_orders'] == 0) {
+            $update_table_query = "UPDATE tables SET status = 'active' WHERE id = ?";
+            $update_table_stmt = $db->prepare($update_table_query);
+            $update_table_stmt->execute([$table_id]);
+        }
+        
     } catch (Exception $e) {
+        $db->rollBack();
         $message = "Error completing order: " . $e->getMessage();
-    $message_type = "danger";
+        $message_type = "danger";
         error_log("Order completion error: " . $e->getMessage());
     }
+    
+    // Refresh table data
+    $tables = $qrCode->getAllTables();
 }
 
 // Handle QR code generation
@@ -240,440 +315,171 @@ if (isset($_POST['edit_table'])) {
 if (isset($_POST['delete_table'])) {
     $table_id = $_POST['table_id'];
     
-    $result = $qrCode->deleteTable($table_id);
-    $message = $result['message'];
-    $message_type = $result['success'] ? 'success' : 'danger';
+    try {
+        // Start transaction
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $db->beginTransaction();
+        
+        // Check if table has any pending or active orders
+        $check_orders_query = "SELECT COUNT(*) as order_count FROM orders 
+                             WHERE table_id = ? 
+                             AND status IN ('pending', 'processing')";
+        $check_stmt = $db->prepare($check_orders_query);
+        $check_stmt->execute([$table_id]);
+        $result = $check_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result['order_count'] > 0) {
+            // Table has active orders - show warning
+            $db->rollBack();
+            $message = "Cannot delete table: There are " . $result['order_count'] . " active or pending orders. Please complete or cancel these orders first.";
+            $message_type = "warning";
+        } else {
+            // Check for completed orders
+            $check_completed_query = "SELECT COUNT(*) as completed_count FROM orders 
+                                    WHERE table_id = ? 
+                                    AND status = 'completed'";
+            $check_completed_stmt = $db->prepare($check_completed_query);
+            $check_completed_stmt->execute([$table_id]);
+            $completed_result = $check_completed_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($completed_result['completed_count'] > 0) {
+                // Table has completed orders - perform soft delete
+                $update_query = "UPDATE tables SET status = 'inactive' WHERE id = ?";
+                $update_stmt = $db->prepare($update_query);
+                $update_stmt->execute([$table_id]);
+                
+                // Deactivate all QR codes for this table
+                $deactivate_qr_query = "UPDATE qr_codes SET is_active = 0 WHERE table_id = ?";
+                $deactivate_qr_stmt = $db->prepare($deactivate_qr_query);
+                $deactivate_qr_stmt->execute([$table_id]);
+                
+                // Delete physical QR code files
+                $get_qr_query = "SELECT image_path FROM qr_codes WHERE table_id = ?";
+                $get_qr_stmt = $db->prepare($get_qr_query);
+                $get_qr_stmt->execute([$table_id]);
+                while ($qr_result = $get_qr_stmt->fetch(PDO::FETCH_ASSOC)) {
+                    if (!empty($qr_result['image_path'])) {
+                        $qr_file_path = __DIR__ . "/../uploads/qrcodes/" . basename($qr_result['image_path']);
+                        if (file_exists($qr_file_path)) {
+                            unlink($qr_file_path);
+                        }
+                    }
+                }
+                
+                $db->commit();
+                $message = "Table has order history. The table has been deactivated and its QR codes have been removed.";
+                $message_type = "info";
+            } else {
+                // No orders at all - safe to delete completely
+                // First delete associated QR codes
+                $delete_qr_query = "DELETE FROM qr_codes WHERE table_id = ?";
+                $delete_qr_stmt = $db->prepare($delete_qr_query);
+                $delete_qr_stmt->execute([$table_id]);
+                
+                // Then delete the table
+                $delete_table_query = "DELETE FROM tables WHERE id = ?";
+                $delete_table_stmt = $db->prepare($delete_table_query);
+                $delete_table_stmt->execute([$table_id]);
+                
+                $db->commit();
+                $message = "Table and associated QR codes have been completely deleted.";
+                $message_type = "success";
+            }
+        }
+    } catch (Exception $e) {
+        $db->rollBack();
+        $message = "Error: " . $e->getMessage();
+        $message_type = "danger";
+        error_log("Table deletion error: " . $e->getMessage());
+    }
     
     // Refresh table data
     $tables = $qrCode->getAllTables();
 }
 
-// Custom CSS
-$extra_css = '
+// Replace the $extra_css variable with this:
+$extra_css = '<link rel="stylesheet" href="css/qr_codes.css">';
+
+// Add this to your CSS section
+$extra_css .= '
 <style>
-.qr-card {
-    border: none;
-    border-radius: 15px;
-    box-shadow: 0 2px 15px rgba(0,0,0,0.05);
-    transition: transform 0.3s ease;
-}
-
-.qr-card:hover {
-    transform: translateY(-5px);
-}
-
-.qr-image {
-    max-width: 200px;
-    margin: 0 auto;
-    padding: 10px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
-
-.qr-actions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: center;
-    margin-top: 1.5rem;
-}
-
-.table-number {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: var(--primary-color);
-    margin-bottom: 1rem;
-}
-
-.qr-placeholder {
-    width: 200px;
-    height: 200px;
-    background: #f8f9fa;
-    border-radius: 10px;
+.qr-status-icon {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto;
-    border: 2px dashed #dee2e6;
+    color: white;
+    font-size: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.qr-placeholder i {
-    font-size: 3rem;
-    color: #dee2e6;
+.qr-status-expired {
+    background: #EF4444;
 }
 
-.qr-url {
-    font-size: 0.875rem;
-    color: #6c757d;
-    margin-top: 0.5rem;
-    word-break: break-all;
-    cursor: pointer;
-    transition: color 0.3s ease;
+.qr-status-invalid {
+    background: #F59E0B;
 }
 
-.qr-url:hover {
-    color: var(--primary-color);
+.qr-status-active {
+    background: #10B981;
 }
 
-.qr-info {
-    margin-top: 1rem;
-    padding: 0.5rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-    font-size: 0.875rem;
-}
-
-.btn-generate {
-    min-width: 140px;
-}
-
-.btn-download {
-    min-width: 140px;
-}
-
-.qr-preview {
+.qr-code-wrapper {
     position: relative;
     display: inline-block;
 }
 
-.qr-preview::after {
-    content: "Click to enlarge";
+.qr-code-overlay {
     position: absolute;
-    bottom: -20px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.75rem;
-    color: #6c757d;
-    opacity: 0;
-    transition: opacity 0.3s ease;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 3rem;
+    border-radius: 8px;
 }
 
-.qr-preview:hover::after {
-    opacity: 1;
-}
-
-.table-number-btn {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
+.expired-text {
+    color: #EF4444;
     font-weight: 600;
-    color: var(--primary-color);
-    margin-bottom: 1rem;
-    cursor: pointer;
-    padding: 0;
-    transition: color 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
 }
 
-.table-number-btn:hover {
-    color: var(--bs-primary);
+.invalid-text {
+    color: #F59E0B;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
 }
 
-.table-number-form {
-    margin-bottom: 1rem;
+.active-text {
+    color: #10B981;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
 }
-
-.qr-placeholder {
-    cursor: pointer;
-    transition: transform 0.3s ease;
-}
-
-.qr-placeholder:hover {
-    transform: scale(1.05);
-}
-
-.qr-placeholder:hover i {
-    color: var(--bs-primary);
-}
-
-.modal-xl-custom {
-    max-width: 800px;
-}
-
-.qr-image-large {
-    max-width: 100%;
-    height: auto;
-}
-
-.qr-preview img {
-    cursor: pointer;
-    transition: transform 0.2s;
-}
-
-.qr-preview img:hover {
-    transform: scale(1.05);
-}
-
-.btn-info {
-    color: #fff;
-    background-color: #17a2b8;
-    border-color: #17a2b8;
-}
-
-.btn-info:hover {
-    color: #fff;
-    background-color: #138496;
-    border-color: #117a8b;
-}
-
-/* Print styles */
-@media print {
-    @page {
-        margin: 0;
-        size: A4;
-    }
-    
-    body * {
-        visibility: hidden;
-    }
-    
-    .modal.show {
-        position: absolute !important;
-        left: 0;
-        top: 0;
-        margin: 0;
-        padding: 0;
-        overflow: visible !important;
-    }
-    
-    .modal.show .modal-dialog {
-        transform: translate(0, 0) !important;
-        margin: 0;
-        width: 100%;
-    }
-    
-    .modal-content {
-        border: none !important;
-        box-shadow: none !important;
-    }
-    
-    .modal-content * {
-        visibility: visible;
-    }
-    
-    .modal-header, .modal-footer, .btn-close {
-        display: none !important;
-    }
-    
-    .qr-print-content {
-        visibility: visible;
-        position: fixed;
-        left: 50%;
-        transform: translateX(-50%);
-        top: 20px;
-        width: 100%;
-        max-width: 480px;
-        margin: 0;
-        background: white;
-    }
-    
-    .print-table-info {
-        text-align: center;
-        background: #ffffff;
-        padding: 40px 30px;
-        position: relative;
-        border: 1px solid #e0e0e0;
-    }
-
-    /* Elegant Frame Design */
-    .frame-border {
-        position: absolute;
-        top: 15px;
-        left: 15px;
-        right: 15px;
-        bottom: 15px;
-        border: 2px solid #c9a95c;
-        pointer-events: none;
-    }
-
-    .frame-corner {
-        position: absolute;
-        width: 30px;
-        height: 30px;
-        border: 2px solid #c9a95c;
-    }
-
-    .frame-corner.top-left {
-        top: 8px;
-        left: 8px;
-        border-right: none;
-        border-bottom: none;
-    }
-
-    .frame-corner.top-right {
-        top: 8px;
-        right: 8px;
-        border-left: none;
-        border-bottom: none;
-    }
-
-    .frame-corner.bottom-left {
-        bottom: 8px;
-        left: 8px;
-        border-right: none;
-        border-top: none;
-    }
-
-    .frame-corner.bottom-right {
-        bottom: 8px;
-        right: 8px;
-        border-left: none;
-        border-top: none;
-    }
-    
-    .restaurant-logo {
-        width: 80px;
-        height: 80px;
-        margin: 0 auto 20px;
-        position: relative;
-    }
-
-    .restaurant-logo::before {
-        content: '*';
-        font-size: 40px;
-        color: #c9a95c;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-    }
-    
-    .restaurant-name {
-        font-size: 28px;
-        font-weight: 700;
-        color: #1a1a1a;
-        margin: 0 0 5px;
-        text-transform: uppercase;
-        letter-spacing: 4px;
-        font-family: 'Times New Roman', serif;
-    }
-
-    .restaurant-tagline {
-        font-size: 12px;
-        color: #666;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        margin-bottom: 30px;
-    }
-    
-    .table-number-print {
-        font-size: 18px;
-        font-weight: 500;
-        margin: 25px 0;
-        color: #1a1a1a;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        position: relative;
-        display: inline-block;
-        padding: 12px 35px;
-    }
-
-    .table-number-print::before,
-    .table-number-print::after {
-        content: '';
-        position: absolute;
-        width: 40px;
-        height: 1px;
-        background: #c9a95c;
-        top: 50%;
-    }
-
-    .table-number-print::before {
-        left: -20px;
-    }
-
-    .table-number-print::after {
-        right: -20px;
-    }
-    
-    .qr-container {
-        position: relative;
-        margin: 30px auto;
-        width: 240px;
-        padding: 15px;
-        background: #fff;
-        box-shadow: 0 0 15px rgba(0,0,0,0.05);
-    }
-
-    .qr-print-content img {
-        width: 210px;
-        height: 210px;
-        display: block;
-        margin: 0 auto;
-        background: white;
-    }
-    
-    .validity-info {
-        font-size: 12px;
-        font-weight: 500;
-        color: #666;
-        margin: 20px auto;
-        letter-spacing: 1px;
-        display: inline-block;
-        position: relative;
-        padding: 8px 0;
-    }
-
-    .validity-info::before,
-    .validity-info::after {
-        content: '•';
-        color: #c9a95c;
-        margin: 0 10px;
-    }
-    
-    .print-footer {
-        margin-top: 25px;
-        padding-top: 25px;
-        border-top: 1px solid #eee;
-        position: relative;
-    }
-
-    .scan-instructions {
-        font-size: 14px;
-        color: #333;
-        margin-bottom: 20px;
-        font-style: italic;
-    }
-
-    .scan-steps {
-        text-align: left;
-        width: 80%;
-        margin: 15px auto;
-        padding: 0;
-        list-style: none;
-    }
-
-    .scan-steps li {
-        font-size: 12px;
-        color: #666;
-        margin: 8px 0;
-        padding-left: 25px;
-        position: relative;
-        line-height: 1.4;
-    }
-
-    .scan-steps li::before {
-        content: '✓';
-        position: absolute;
-        left: 0;
-        color: #c9a95c;
-        font-weight: bold;
-    }
-
-    .establishment-info {
-        margin-top: 25px;
-        font-size: 11px;
-        color: #999;
-        font-style: italic;
-    }
-
-    .divider {
-        width: 50px;
-        height: 1px;
-        background: #c9a95c;
-        margin: 15px auto;
-    }
-}
-</style>';
+</style>
+';
 
 // Start output buffering
 ob_start();

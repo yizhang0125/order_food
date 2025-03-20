@@ -63,35 +63,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 
-    // Update menu item
-    $query = "UPDATE menu_items 
-              SET name = :name, description = :description, price = :price, 
-                  category_id = :category_id, status = :status, image_path = :image_path 
-              WHERE id = :id";
-    
-    $stmt = $db->prepare($query);
-    
-    $status = isset($_POST['status']) ? 'available' : 'unavailable';
-    
-    $stmt->bindParam(':name', $_POST['name']);
-    $stmt->bindParam(':description', $_POST['description']);
-    $stmt->bindParam(':price', $_POST['price']);
-    $stmt->bindParam(':category_id', $_POST['category_id']);
-    $stmt->bindParam(':status', $status);
-    $stmt->bindParam(':image_path', $image_path);
-    $stmt->bindParam(':id', $item_id);
-    
-    if ($stmt->execute()) {
-        $message = "Menu item updated successfully!";
-        $message_type = "success";
+    try {
+        // Update menu item
+        $query = "UPDATE menu_items 
+                  SET name = :name, 
+                      description = :description, 
+                      price = :price, 
+                      category_id = :category_id, 
+                      status = :status, 
+                      image_path = :image_path 
+                  WHERE id = :id";
         
-        // Refresh item data
         $stmt = $db->prepare($query);
-        $stmt->bindParam(':id', $item_id);
-        $stmt->execute();
-        $item = $stmt->fetch(PDO::FETCH_ASSOC);
-    } else {
-        $message = "Error updating menu item.";
+        
+        $status = isset($_POST['status']) ? 'available' : 'unavailable';
+        
+        // Bind all parameters
+        $params = [
+            ':name' => $_POST['name'],
+            ':description' => $_POST['description'],
+            ':price' => $_POST['price'],
+            ':category_id' => $_POST['category_id'],
+            ':status' => $status,
+            ':image_path' => $image_path,
+            ':id' => $item_id
+        ];
+        
+        if ($stmt->execute($params)) {
+            $_SESSION['message'] = "Menu item updated successfully!";
+            $_SESSION['message_type'] = "success";
+            header('Location: menu_management.php');
+            exit();
+        } else {
+            $message = "Error updating menu item.";
+            $message_type = "danger";
+        }
+    } catch (PDOException $e) {
+        $message = "Database error: " . $e->getMessage();
         $message_type = "danger";
     }
 }
@@ -265,12 +273,17 @@ ob_start();
                                 </div>
                                 
                                 <div class="col-md-6">
-                                    <label class="form-label">Price</label>
-                                    <div class="input-group input-group-lg">
-                                        <span class="input-group-text price-symbol">$</span>
-                                        <input type="number" class="form-control price-input" name="price" 
-                                               step="0.01" required value="<?php echo $item['price']; ?>"
-                                               placeholder="0.00">
+                                    <label class="form-label">Price (RM)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">RM</span>
+                                        <input type="number" 
+                                               class="form-control" 
+                                               id="price" 
+                                               name="price" 
+                                               step="0.10" 
+                                               min="0" 
+                                               value="<?php echo number_format($item['price'], 2); ?>" 
+                                               required>
                                     </div>
                                 </div>
                             </div>
@@ -422,6 +435,14 @@ document.addEventListener("DOMContentLoaded", function() {
         const file = dt.files[0];
         imageInput.files = dt.files;
         imageInput.dispatchEvent(new Event("change"));
+    }
+});
+
+document.querySelector("form").addEventListener("submit", function(e) {
+    const price = document.getElementById("price").value;
+    if (price <= 0) {
+        e.preventDefault();
+        alert("Price must be greater than RM 0.00");
     }
 });
 </script>

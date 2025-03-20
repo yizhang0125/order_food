@@ -146,6 +146,29 @@ $current_page = basename($_SERVER['PHP_SELF']);
 .sidebar::-webkit-scrollbar-thumb:hover {
     background: #d0d0d0;
 }
+
+.sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+@media (max-width: 991.98px) {
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out;
+    }
+    
+    .sidebar.show {
+        transform: translateX(0);
+    }
+}
 </style>
 
 <div class="sidebar" id="sidebar">
@@ -160,10 +183,27 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link <?php echo $current_page == 'orders.php' ? 'active' : ''; ?>" href="orders.php">
-                    <i class="fas fa-shopping-cart"></i>
+                <a href="orders.php" class="nav-link <?php echo $current_page == 'orders.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-clipboard-list"></i>
                     <span>Orders</span>
-                    <span class="nav-badge">New</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="payment_counter.php" class="nav-link <?php echo $current_page == 'payment_counter.php' ? 'active' : ''; ?>">
+                    <i class="fas fa-cash-register"></i>
+                    <span>Payment Counter</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo $current_page == 'completed_orders.php' ? 'active' : ''; ?>" href="completed_orders.php">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Completed Orders</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo $current_page == 'cancelled_orders.php' ? 'active' : ''; ?>" href="cancelled_orders.php">
+                    <i class="fas fa-times-circle"></i>
+                    <span>Cancelled Orders</span>
                 </a>
             </li>
             <li class="nav-item">
@@ -200,6 +240,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link <?php echo $current_page == 'payment_details.php' ? 'active' : ''; ?>" href="payment_details.php">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <span>Payment Details</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'qr_codes.php' ? 'active' : ''; ?>" href="qr_codes.php">
                     <i class="fas fa-qrcode"></i>
                     <span>QR Codes</span>
@@ -221,12 +267,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link <?php echo $current_page == 'users.php' ? 'active' : ''; ?>" href="users.php">
-                    <i class="fas fa-users"></i>
-                    <span>Users</span>
-                </a>
-            </li>
-            <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'settings.php' ? 'active' : ''; ?>" href="settings.php">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
@@ -234,58 +274,108 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </li>
         </ul>
     </div>
-
-    <!-- Quick Actions Footer -->
-    <div class="sidebar-footer">
-        <h6 class="menu-title">Quick Actions</h6>
-        <div class="quick-actions">
-            <a href="add_order.php" class="quick-action-btn text-decoration-none">
-                <i class="fas fa-plus-circle"></i>
-                <span class="d-block">New Order</span>
-            </a>
-            <a href="add_item.php" class="quick-action-btn text-decoration-none">
-                <i class="fas fa-utensils"></i>
-                <span class="d-block">Add Item</span>
-            </a>
-            <a href="add_table.php" class="quick-action-btn text-decoration-none">
-                <i class="fas fa-chair"></i>
-                <span class="d-block">Add Table</span>
-            </a>
-            <a href="reports.php" class="quick-action-btn text-decoration-none">
-                <i class="fas fa-chart-bar"></i>
-                <span class="d-block">Reports</span>
-            </a>
-        </div>
-    </div>
 </div>
 
 <!-- JavaScript for Sidebar -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('sidebar');
-    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebarToggle = document.getElementById('mobile-sidebar-toggle');
+    const body = document.body;
 
+    // Function to check window width
+    function isDesktop() {
+        return window.innerWidth >= 992;
+    }
+
+    // Function to create overlay
+    function createOverlay() {
+        const overlay = document.createElement('div');
+        overlay.className = 'sidebar-overlay';
+        overlay.addEventListener('click', () => {
+            toggleSidebar();
+        });
+        return overlay;
+    }
+
+    // Toggle sidebar function
+    function toggleSidebar() {
+        if (!sidebar) return;
+        
+        sidebar.classList.toggle('show');
+        
+        // Toggle icon
+        if (sidebarToggle) {
+            const icon = sidebarToggle.querySelector('i');
+            if (sidebar.classList.contains('show')) {
+                icon.classList.remove('fa-bars');
+                icon.classList.add('fa-times');
+            } else {
+                icon.classList.remove('fa-times');
+                icon.classList.add('fa-bars');
+            }
+        }
+        
+        // Handle overlay
+        if (!isDesktop()) {
+            const existingOverlay = document.querySelector('.sidebar-overlay');
+            if (sidebar.classList.contains('show')) {
+                if (!existingOverlay) {
+                    const overlay = createOverlay();
+                    body.appendChild(overlay);
+                    // Fade in effect
+                    setTimeout(() => overlay.style.opacity = '1', 0);
+                }
+            } else {
+                if (existingOverlay) {
+                    // Fade out effect
+                    existingOverlay.style.opacity = '0';
+                    setTimeout(() => existingOverlay.remove(), 300);
+                }
+            }
+        }
+    }
+
+    // Initialize toggle button event
     if (sidebarToggle) {
         sidebarToggle.addEventListener('click', function(e) {
             e.preventDefault();
-            sidebar.classList.toggle('show');
+            e.stopPropagation();
+            toggleSidebar();
         });
     }
 
     // Close sidebar when clicking outside
     document.addEventListener('click', function(e) {
-        if (window.innerWidth < 992) {
-            if (!sidebar.contains(e.target) && !sidebarToggle.contains(e.target)) {
-                sidebar.classList.remove('show');
+        if (!isDesktop()) {
+            if (sidebar && sidebar.classList.contains('show')) {
+                if (!sidebar.contains(e.target) && 
+                    !sidebarToggle.contains(e.target)) {
+                    toggleSidebar();
+                }
             }
         }
     });
 
     // Handle window resize
+    let resizeTimer;
     window.addEventListener('resize', function() {
-        if (window.innerWidth >= 992) {
-            sidebar.classList.remove('show');
-        }
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            if (isDesktop()) {
+                sidebar.classList.remove('show');
+                const overlay = document.querySelector('.sidebar-overlay');
+                if (overlay) {
+                    overlay.remove();
+                }
+                // Reset toggle button icon
+                if (sidebarToggle) {
+                    const icon = sidebarToggle.querySelector('i');
+                    icon.classList.remove('fa-times');
+                    icon.classList.add('fa-bars');
+                }
+            }
+        }, 250);
     });
 });
 </script> 
