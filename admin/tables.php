@@ -123,15 +123,24 @@ if (isset($_POST['delete_table'])) {
     }
 }
 
-// Get all tables with order counts
+// Get all tables
 try {
     $query = "SELECT t.*, 
               COUNT(DISTINCT o.id) as total_orders,
               COUNT(DISTINCT CASE WHEN o.status IN ('pending', 'processing') THEN o.id END) as pending_orders,
-              COUNT(DISTINCT CASE WHEN qc.is_active = 1 AND (qc.expires_at IS NULL OR qc.expires_at > NOW()) THEN qc.id END) as active_qr_codes
+              COUNT(DISTINCT CASE WHEN qc.is_active = 1 AND (qc.expires_at IS NULL OR qc.expires_at > NOW()) THEN qc.id END) as active_qr_codes,
+              CASE 
+                  WHEN EXISTS (
+                      SELECT 1 FROM orders o2 
+                      WHERE o2.table_id = t.id 
+                      AND o2.status IN ('pending', 'processing')
+                  ) THEN 'occupied'
+                  ELSE 'available'
+              END as table_status
               FROM tables t
               LEFT JOIN orders o ON t.id = o.table_id
               LEFT JOIN qr_codes qc ON t.id = qc.table_id
+              WHERE t.status = 'active'
               GROUP BY t.id
               ORDER BY t.table_number";
     
@@ -144,263 +153,25 @@ try {
     $tables = [];
 }
 
-// Custom CSS
-$extra_css = '
-<style>
-:root {
-    --gradient-primary: linear-gradient(135deg, #2563eb, #3b82f6);
-    --gradient-success: linear-gradient(135deg, #059669, #10b981);
-    --gradient-danger: linear-gradient(135deg, #dc2626, #ef4444);
-    --shadow-sm: 0 2px 4px rgba(148, 163, 184, 0.1);
-    --shadow-md: 0 4px 6px -1px rgba(148, 163, 184, 0.1);
-    --shadow-lg: 0 10px 15px -3px rgba(148, 163, 184, 0.1);
-}
-
-.table-card {
-    transition: all 0.3s ease;
-    border: none;
-    border-radius: 20px;
-    background: white;
-    box-shadow: var(--shadow-sm);
-    position: relative;
-    overflow: hidden;
-}
-
-.table-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-lg);
-}
-
-.table-card::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 120px;
-    background: var(--gradient-primary);
-    opacity: 0.1;
-    border-radius: 20px 20px 0 0;
-}
-
-.table-header {
-    position: relative;
-    padding: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.table-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 16px;
-    background: var(--gradient-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
-}
-
-.table-icon i {
-    font-size: 1.75rem;
-    color: white;
-}
-
-.table-info {
-    flex: 1;
-}
-
-.table-number {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #1e293b;
-    margin: 0;
-    line-height: 1.2;
-}
-
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.4rem 1rem;
-    border-radius: 50px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    gap: 0.5rem;
-}
-
-.status-active {
-    background: linear-gradient(135deg, #059669, #10b981);
-    color: white;
-}
-
-.status-inactive {
-    background: linear-gradient(135deg, #dc2626, #ef4444);
-    color: white;
-}
-
-.order-count {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    background: white;
-    color: #2563eb;
-    padding: 0.4rem 1rem;
-    border-radius: 50px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    box-shadow: var(--shadow-sm);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.order-count i {
-    font-size: 0.875rem;
-}
-
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-    padding: 1.5rem;
-    background: #f8fafc;
-    border-radius: 16px;
-    margin: 0 1.5rem 1.5rem;
-}
-
-.stat-item {
-    text-align: center;
-    padding: 1rem;
-    background: white;
-    border-radius: 12px;
-    box-shadow: var(--shadow-sm);
-    transition: all 0.3s ease;
-}
-
-.stat-item:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
-
-.stat-label {
-    font-size: 0.875rem;
-    color: #64748b;
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-}
-
-.stat-value {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #1e293b;
-    line-height: 1;
-}
-
-.table-actions {
-    padding: 1rem 1.5rem;
-    border-top: 1px solid #e2e8f0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.action-buttons {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.btn-action {
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 10px;
-    border: none;
-    background: #f1f5f9;
-    color: #64748b;
-    transition: all 0.3s ease;
-}
-
-.btn-action:hover {
-    transform: translateY(-2px);
-}
-
-.btn-edit:hover {
-    background: var(--gradient-primary);
-    color: white;
-}
-
-.btn-qr:hover {
-    background: linear-gradient(135deg, #8b5cf6, #6366f1);
-    color: white;
-}
-
-.btn-delete:hover {
-    background: var(--gradient-danger);
-    color: white;
-}
-
-.search-box {
-    max-width: 300px;
-}
-
-.search-box input {
-    border-radius: 50px;
-    padding: 0.75rem 1.25rem 0.75rem 3rem;
-    border: 1px solid #e2e8f0;
-    font-size: 0.95rem;
-    transition: all 0.3s ease;
-}
-
-.search-box input:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.search-box i {
-    position: absolute;
-    left: 1.25rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #94a3b8;
-    font-size: 1rem;
-}
-
-.filter-buttons .btn {
-    padding: 0.75rem 1.5rem;
-    font-weight: 500;
-    border-radius: 50px;
-    transition: all 0.3s ease;
-}
-
-.filter-buttons .btn.active {
-    background: var(--gradient-primary);
-    border-color: transparent;
-    color: white;
-    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
-}
-</style>
-';
+// Include external CSS file
+$extra_css = '<link rel="stylesheet" href="css/tables.css">';
 
 // Start output buffering
 ob_start();
 ?>
 
-<div class="container-fluid">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h1 class="h3 mb-0">Table Management</h1>
-            <p class="text-muted">Manage your restaurant tables</p>
+<div class="container-fluid py-4">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1 class="page-title">
+                <i class="fas fa-table"></i>
+                Table Management
+            </h1>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTableModal">
+                <i class="fas fa-plus me-2"></i>Add New Table
+            </button>
         </div>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTableModal">
-            <i class="fas fa-plus me-2"></i>Add New Table
-        </button>
     </div>
 
     <!-- Alert Messages -->
@@ -411,66 +182,106 @@ ob_start();
     </div>
     <?php endif; ?>
 
-    <!-- Search and Filter -->
-    <div class="card mb-4">
-        <div class="card-body">
+    <!-- Tables Container -->
+    <div class="tables-container">
+        <!-- Search and Filter Section -->
+        <div class="search-filter-section">
             <div class="row align-items-center">
                 <div class="col-md-6">
-                    <div class="position-relative search-box">
+                    <div class="search-box">
                         <i class="fas fa-search"></i>
-                        <input type="text" class="form-control" id="tableSearch" placeholder="Search tables...">
+                        <input type="text" id="tableSearch" placeholder="Search tables...">
                     </div>
                 </div>
-                <div class="col-md-6 text-md-end mt-3 mt-md-0">
-                    <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-outline-primary active" data-filter="all">All</button>
-                        <button type="button" class="btn btn-outline-primary" data-filter="active">Active</button>
-                        <button type="button" class="btn btn-outline-primary" data-filter="inactive">Inactive</button>
+                <div class="col-md-6">
+                    <div class="filter-buttons">
+                        <button type="button" class="filter-btn active" data-filter="all">
+                            <i class="fas fa-table"></i>All Tables
+                        </button>
+                        <button type="button" class="filter-btn" data-filter="available">
+                            <i class="fas fa-check-circle"></i>Available
+                        </button>
+                        <button type="button" class="filter-btn" data-filter="occupied">
+                            <i class="fas fa-exclamation-triangle"></i>Occupied
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Tables Grid -->
-    <div class="row g-4">
-        <?php foreach ($tables as $table): ?>
-        <div class="col-12 col-md-6 col-xl-4 table-item" data-status="<?php echo $table['status']; ?>">
-            <div class="card table-card">
+        <!-- Tables Grid -->
+        <?php if (empty($tables)): ?>
+        <div class="no-tables">
+            <i class="fas fa-table"></i>
+            <h3>No Tables Found</h3>
+            <p>No tables found. Add new tables to get started.</p>
+        </div>
+        <?php else: ?>
+        <div class="tables-grid">
+            <?php foreach ($tables as $table): 
+                $table_status = $table['table_status'];
+                $is_occupied = $table_status === 'occupied';
+                $is_available = $table_status === 'available';
+                $is_inactive = $table['status'] === 'inactive';
+            ?>
+            <div class="table-card <?php echo $table_status; ?>" 
+                 data-status="<?php echo $table['status']; ?>" 
+                 data-table-status="<?php echo $table_status; ?>">
+                
+                <!-- Table Header -->
                 <div class="table-header">
-                    <div class="table-icon">
+                    <div class="table-icon <?php echo $is_inactive ? 'inactive' : $table_status; ?>">
                         <i class="fas fa-chair"></i>
                     </div>
                     <div class="table-info">
                         <h3 class="table-number">Table <?php echo htmlspecialchars($table['table_number']); ?></h3>
-                        <span class="status-badge status-<?php echo $table['status']; ?>">
-                            <i class="fas fa-<?php echo $table['status'] === 'active' ? 'check-circle' : 'times-circle'; ?>"></i>
-                            <?php echo ucfirst($table['status']); ?>
+                        <span class="status-badge status-<?php echo $is_inactive ? 'inactive' : $table_status; ?>">
+                            <i class="fas fa-<?php 
+                                if ($is_inactive) echo 'times-circle';
+                                elseif ($is_occupied) echo 'exclamation-triangle';
+                                else echo 'check-circle';
+                            ?>"></i>
+                            <?php 
+                                if ($is_inactive) echo 'Inactive';
+                                elseif ($is_occupied) echo 'Occupied';
+                                else echo 'Available';
+                            ?>
                         </span>
-                    </div>
-                    <span class="order-count">
-                        <i class="fas fa-clipboard-list"></i>
-                        <?php echo $table['total_orders']; ?> orders
-                    </span>
-                </div>
-                
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <div class="stat-label">
-                            <i class="fas fa-clock"></i>
-                            Pending Orders
-                        </div>
-                        <div class="stat-value"><?php echo $table['pending_orders']; ?></div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-label">
-                            <i class="fas fa-qrcode"></i>
-                            Active QR Codes
-                        </div>
-                        <div class="stat-value"><?php echo $table['active_qr_codes']; ?></div>
+                        <!-- Debug info (remove this in production) -->
+                        <small style="display: block; color: #666; font-size: 0.75rem; margin-top: 0.25rem;">
+                            Status: <?php echo $table_status; ?> | Orders: <?php echo $table['total_orders']; ?> | Pending: <?php echo $table['pending_orders']; ?>
+                        </small>
                     </div>
                 </div>
                 
+                <!-- Stats Section -->
+                <div class="stats-section">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-label">
+                                <i class="fas fa-clipboard-list"></i>
+                                Total Orders
+                            </div>
+                            <div class="stat-value"><?php echo $table['total_orders']; ?></div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">
+                                <i class="fas fa-clock"></i>
+                                Pending
+                            </div>
+                            <div class="stat-value"><?php echo $table['pending_orders']; ?></div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">
+                                <i class="fas fa-qrcode"></i>
+                                QR Codes
+                            </div>
+                            <div class="stat-value"><?php echo $table['active_qr_codes']; ?></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Table Actions -->
                 <div class="table-actions">
                     <div class="action-buttons">
                         <button type="button" class="btn-action btn-edit" 
@@ -493,8 +304,9 @@ ob_start();
                     </div>
                 </div>
             </div>
+            <?php endforeach; ?>
         </div>
-        <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -596,24 +408,24 @@ $extra_js = '
 document.addEventListener("DOMContentLoaded", function() {
     // Search functionality
     const searchInput = document.getElementById("tableSearch");
-    const tableItems = document.querySelectorAll(".table-item");
+    const tableCards = document.querySelectorAll(".table-card");
     
     searchInput.addEventListener("input", function() {
         const searchTerm = this.value.toLowerCase();
         
-        tableItems.forEach(item => {
-            const tableNumber = item.querySelector(".card-title").textContent.toLowerCase();
+        tableCards.forEach(card => {
+            const tableNumber = card.querySelector(".table-number").textContent.toLowerCase();
             
             if (tableNumber.includes(searchTerm)) {
-                item.style.display = "";
+                card.style.display = "";
             } else {
-                item.style.display = "none";
+                card.style.display = "none";
             }
         });
     });
 
     // Filter functionality
-    const filterButtons = document.querySelectorAll("[data-filter]");
+    const filterButtons = document.querySelectorAll(".filter-btn");
     
     filterButtons.forEach(button => {
         button.addEventListener("click", function() {
@@ -624,19 +436,49 @@ document.addEventListener("DOMContentLoaded", function() {
             this.classList.add("active");
             
             // Filter items
-            tableItems.forEach(item => {
-                if (filter === "all" || item.dataset.status === filter) {
-                    item.style.display = "";
+            tableCards.forEach(card => {
+                const tableStatus = card.dataset.tableStatus;
+                const cardStatus = card.dataset.status;
+                
+                let shouldShow = false;
+                
+                if (filter === "all") {
+                    shouldShow = true;
+                } else if (filter === "available" && tableStatus === "available") {
+                    shouldShow = true;
+                } else if (filter === "occupied" && tableStatus === "occupied") {
+                    shouldShow = true;
+                }
+                
+                if (shouldShow) {
+                    card.style.display = "";
                 } else {
-                    item.style.display = "none";
+                    card.style.display = "none";
                 }
             });
         });
     });
+    
+    // Add hover effects and animations
+    tableCards.forEach(card => {
+        card.addEventListener("mouseenter", function() {
+            this.style.transform = "translateY(-4px)";
+        });
+        
+        card.addEventListener("mouseleave", function() {
+            this.style.transform = "translateY(0)";
+        });
+    });
+    
+    // Auto-refresh every 30 seconds to update occupied status
+    setInterval(function() {
+        location.reload();
+    }, 30000);
 });
 </script>
 ';
 
 // Include the layout template
 include 'includes/layout.php';
+?> 
 ?> 

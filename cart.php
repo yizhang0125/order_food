@@ -3,11 +3,13 @@ session_start();
 require_once(__DIR__ . '/config/Database.php');
 require_once(__DIR__ . '/classes/MenuItem.php');
 require_once(__DIR__ . '/classes/Order.php');
+require_once(__DIR__ . '/classes/Cart.php');
 
 $database = new Database();
 $db = $database->getConnection();
 $menuItemModel = new MenuItem($db);
 $orderModel = new Order($db);
+$cart = new Cart();
 
 // Process checkout
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['checkout'])) {
@@ -42,11 +44,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['checkout'])) {
             throw new Exception('Invalid or expired QR code');
         }
         
-        // Calculate total amount including SST
+        // Calculate total amount including tax using Cart class
         $subtotal = array_reduce($cart_items, function($carry, $item) {
             return $carry + ($item['price'] * $item['quantity']);
         }, 0);
-        $total_amount = $subtotal + ($subtotal * 0.06); // Add 6% SST
+        $tax_rate = $cart->getTaxRatePercent() / 100; // Get dynamic tax rate from Cart class
+        $total_amount = $subtotal + ($subtotal * $tax_rate);
         
         // Start transaction
         $db->beginTransaction();
@@ -151,370 +154,8 @@ if ($table_number && $token) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="admin/css/cart.css" rel="stylesheet">
     
-    <style>
-        :root {
-            --primary-color: #2563eb;
-            --secondary-color: #1d4ed8;
-            --background-color: #f8fafc;
-            --text-color: #1e293b;
-        }
-
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            padding-top: 80px;
-        }
-
-        .navbar {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            padding: 1rem 0;
-            top: 0 !important;
-            z-index: 1030;
-            height: auto;
-            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .navbar-brand {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary-color) !important;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .navbar-brand i {
-            font-size: 1.8rem;
-        }
-
-        .cart-container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            padding: 2rem;
-            margin-bottom: 2rem;
-        }
-
-        .cart-item {
-            display: flex;
-            align-items: center;
-            padding: 1.5rem;
-            border-bottom: 1px solid #e5e7eb;
-            animation: slideIn 0.3s ease-out;
-            background: white;
-            border-radius: 15px;
-            margin-bottom: 1rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        }
-
-        .cart-item:last-child {
-            border-bottom: none;
-        }
-
-        .cart-item-image {
-            width: 150px;
-            height: 150px;
-            border-radius: 12px;
-            overflow: hidden;
-            margin-right: 1.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .cart-item-image img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .cart-item-details {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .special-instructions {
-            margin-top: 0.5rem;
-            width: 100%;
-        }
-
-        .special-instructions textarea {
-            width: 100%;
-            padding: 0.5rem;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            resize: vertical;
-            min-height: 60px;
-            transition: all 0.3s ease;
-        }
-
-        .special-instructions textarea:focus {
-            border-color: var(--primary-color);
-            outline: none;
-            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
-        }
-
-        .special-instructions textarea::placeholder {
-            color: #9ca3af;
-        }
-
-        .cart-item-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--text-color);
-        }
-
-        .price-details {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-            margin: 0.5rem 0;
-        }
-
-        .unit-price {
-            color: #6b7280;
-            font-size: 0.9rem;
-        }
-
-        .total-price {
-            color: var(--primary-color);
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-        .quantity-controls {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-
-        .quantity-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            border: none;
-            background: #f3f4f6;
-            color: var(--text-color);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .quantity-btn:hover {
-            background: #e5e7eb;
-        }
-
-        .quantity-value {
-            font-weight: 600;
-            font-size: 1.1rem;
-            min-width: 24px;
-            text-align: center;
-        }
-
-        .cart-summary {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            padding: 2rem;
-            position: sticky;
-            top: 100px;
-        }
-
-        .summary-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 1rem;
-        }
-
-        .summary-total {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 2px solid #e5e7eb;
-        }
-
-        .checkout-btn {
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: 50px;
-            padding: 1rem;
-            font-weight: 600;
-            width: 100%;
-            margin-top: 1.5rem;
-            transition: all 0.3s ease;
-        }
-
-        .checkout-btn:hover {
-            background: var(--secondary-color);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        .empty-cart {
-            text-align: center;
-            padding: 3rem;
-        }
-
-        .empty-cart i {
-            font-size: 4rem;
-            color: #94a3b8;
-            margin-bottom: 1.5rem;
-        }
-
-        .empty-cart p {
-            color: #64748b;
-            margin-bottom: 2rem;
-        }
-
-        .continue-shopping {
-            color: var(--primary-color);
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .continue-shopping:hover {
-            transform: translateX(-5px);
-            color: var(--secondary-color);
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateX(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-
-        @media (max-width: 768px) {
-            .cart-item {
-                flex-direction: column;
-                text-align: center;
-                padding: 1rem;
-            }
-
-            .cart-item-image {
-                width: 180px;
-                height: 180px;
-                margin-right: 0;
-                margin-bottom: 1rem;
-            }
-
-            .special-instructions {
-                margin-top: 0.75rem;
-            }
-
-            .special-instructions textarea {
-                text-align: left;
-            }
-
-            .price-details {
-                align-items: center;
-            }
-        }
-
-        /* Add table info banner styles */
-        .table-info-banner {
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.8));
-            backdrop-filter: blur(10px);
-            padding: 8px 16px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            margin: 0 15px;
-            transition: all 0.3s ease;
-        }
-
-        .table-info-banner:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
-        }
-
-        .table-info-banner .table-number {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--primary-color);
-            letter-spacing: 0.5px;
-        }
-
-        /* Add view orders button styles */
-        .view-orders-btn {
-            background: var(--primary-color);
-            color: white;
-            padding: 0.5rem 1.25rem;
-            border-radius: 50px;
-            font-weight: 500;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: all 0.3s ease;
-            border: none;
-        }
-
-        .view-orders-btn:hover {
-            background: var(--secondary-color);
-            transform: translateY(-2px);
-            color: white;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        .view-orders-btn i {
-            font-size: 1rem;
-        }
-
-        /* Add responsive styles */
-        @media (max-width: 768px) {
-            .navbar {
-                padding: 0.5rem 0;
-            }
-
-            .view-orders-btn {
-                padding: 0.4rem 1rem;
-                font-size: 0.9rem;
-            }
-
-            .table-info-banner {
-                margin: 0 10px;
-                padding: 6px 12px;
-            }
-
-            .table-info-banner .table-number {
-                font-size: 14px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .navbar {
-                padding: 0.4rem 0;
-            }
-
-            .table-info-banner {
-                margin: 0 8px;
-                padding: 4px 10px;
-            }
-
-            .table-info-banner .table-number {
-                font-size: 13px;
-            }
-        }
-    </style>
 </head>
 <body>
     <!-- Navbar -->
@@ -563,8 +204,8 @@ if ($table_number && $token) {
                         <span id="subtotal">RM 0.00</span>
                     </div>
                     <div class="summary-item">
-                        <span>SST (6%)</span>
-                        <span id="tax">RM 0.00</span>
+                        <span id="tax-label"><?php echo $cart->getTaxName(); ?> (<?php echo $cart->getTaxRatePercent(); ?>%)</span>
+                        <span id="tax"><?php echo $cart->getCurrencySymbol(); ?> 0.00</span>
                     </div>
                     <div class="summary-total">
                         <span>Total</span>
@@ -589,8 +230,16 @@ if ($table_number && $token) {
     
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Load cart from localStorage
-        let cart = JSON.parse(localStorage.getItem('cart')) || [];
+        // Get table and token from URL to create unique cart key
+        const urlParams = new URLSearchParams(window.location.search);
+        const tableNumber = urlParams.get('table');
+        const token = urlParams.get('token');
+        
+        // Create unique cart key for this table and token
+        const cartKey = tableNumber && token ? `cart_${tableNumber}_${token}` : 'cart_default';
+        
+        // Load cart from localStorage using unique key
+        let cart = JSON.parse(localStorage.getItem(cartKey)) || [];
         
         function updateCartDisplay() {
             const cartItems = document.getElementById('cartItems');
@@ -651,12 +300,17 @@ if ($table_number && $token) {
         
         function updateSummary() {
             const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const sst = subtotal * 0.06; // Malaysian SST 6%
-            const total = subtotal + sst;
             
-            document.getElementById('subtotal').textContent = `RM ${subtotal.toFixed(2)}`;
-            document.getElementById('tax').textContent = `RM ${sst.toFixed(2)}`;
-            document.getElementById('total').textContent = `RM ${total.toFixed(2)}`;
+            // Use Cart class tax settings (from PHP)
+            const taxRate = <?php echo $cart->getTaxRatePercent() / 100; ?>; // Get dynamic tax rate from Cart class
+            const tax = subtotal * taxRate;
+            const total = subtotal + tax;
+            
+            const currencySymbol = '<?php echo $cart->getCurrencySymbol(); ?>';
+            
+            document.getElementById('subtotal').textContent = `${currencySymbol} ${subtotal.toFixed(2)}`;
+            document.getElementById('tax').textContent = `${currencySymbol} ${tax.toFixed(2)}`;
+            document.getElementById('total').textContent = `${currencySymbol} ${total.toFixed(2)}`;
         }
         
         window.updateQuantity = function(itemId, change) {
@@ -666,14 +320,14 @@ if ($table_number && $token) {
                 if (item.quantity <= 0) {
                     cart = cart.filter(item => item.id !== itemId);
                 }
-                localStorage.setItem('cart', JSON.stringify(cart));
+                localStorage.setItem(cartKey, JSON.stringify(cart));
                 updateCartDisplay();
             }
         }
         
         window.removeItem = function(itemId) {
             cart = cart.filter(item => item.id !== itemId);
-            localStorage.setItem('cart', JSON.stringify(cart));
+            localStorage.setItem(cartKey, JSON.stringify(cart));
             updateCartDisplay();
         }
 
@@ -682,7 +336,7 @@ if ($table_number && $token) {
             const item = cart.find(item => item.id === itemId);
             if (item) {
                 item.instructions = instructions;
-                localStorage.setItem('cart', JSON.stringify(cart));
+                localStorage.setItem(cartKey, JSON.stringify(cart));
             }
         }
 
@@ -733,7 +387,7 @@ if ($table_number && $token) {
             document.body.appendChild(form);
             form.submit();
             
-            localStorage.removeItem('cart');
+            localStorage.removeItem(cartKey);
         }
 
         // Initial cart display

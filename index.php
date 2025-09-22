@@ -431,8 +431,16 @@ $menu_by_category = $menuItemModel->getItemsByCategory();
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
+    // Get table and token from URL to create unique cart key
+    const urlParams = new URLSearchParams(window.location.search);
+    const tableNumber = urlParams.get('table');
+    const token = urlParams.get('token');
+    
+    // Create unique cart key for this table and token
+    const cartKey = tableNumber && token ? `cart_${tableNumber}_${token}` : 'cart_default';
+    
     // Define cart and functions in global scope
-    let cart = JSON.parse(localStorage.getItem('cart')) || [];
+    let cart = JSON.parse(localStorage.getItem(cartKey)) || [];
 
     function goToCart() {
         const urlParams = new URLSearchParams(window.location.search);
@@ -452,7 +460,7 @@ $menu_by_category = $menuItemModel->getItemsByCategory();
         cartBadge.textContent = totalItems;
         cartBadge.style.display = totalItems > 0 ? 'flex' : 'none';
     }
-
+    
     function animateToCart(button, itemImage) {
         // Get the coordinates
         const buttonRect = button.getBoundingClientRect();
@@ -590,7 +598,7 @@ $menu_by_category = $menuItemModel->getItemsByCategory();
         }
         
         // Save cart to localStorage
-        localStorage.setItem('cart', JSON.stringify(cart));
+        localStorage.setItem(cartKey, JSON.stringify(cart));
         
         // Reset quantity to 1 after adding to cart
         card.querySelector('input[type="number"]').value = '1';

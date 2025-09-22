@@ -40,6 +40,15 @@ if (!$auth->isLoggedIn()) {
     exit();
 }
 
+// Check if user has permission to manage QR codes
+if ($_SESSION['user_type'] !== 'admin' && 
+    (!isset($_SESSION['staff_permissions']) || 
+    (!in_array('table_management', $_SESSION['staff_permissions']) && 
+     !in_array('all', $_SESSION['staff_permissions'])))) {
+    header('Location: dashboard.php?message=' . urlencode('You do not have permission to manage QR codes') . '&type=warning');
+    exit();
+}
+
 $page_title = 'QR Code Management';
 $message = '';
 $message_type = '';
@@ -399,99 +408,23 @@ if (isset($_POST['delete_table'])) {
     $tables = $qrCode->getAllTables();
 }
 
-// Replace the $extra_css variable with this:
 $extra_css = '<link rel="stylesheet" href="css/qr_codes.css">';
-
-// Add this to your CSS section
-$extra_css .= '
-<style>
-.qr-status-icon {
-    position: absolute;
-    top: -10px;
-    right: -10px;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 1rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.qr-status-expired {
-    background: #EF4444;
-}
-
-.qr-status-invalid {
-    background: #F59E0B;
-}
-
-.qr-status-active {
-    background: #10B981;
-}
-
-.qr-code-wrapper {
-    position: relative;
-    display: inline-block;
-}
-
-.qr-code-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 3rem;
-    border-radius: 8px;
-}
-
-.expired-text {
-    color: #EF4444;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-}
-
-.invalid-text {
-    color: #F59E0B;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-}
-
-.active-text {
-    color: #10B981;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-}
-</style>
-';
 
 // Start output buffering
 ob_start();
 ?>
 
-<div class="container-fluid">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="h3 mb-0">QR Code Management</h1>
-        <button type="button" class="btn btn-primary btn-icon" data-bs-toggle="modal" data-bs-target="#addTableModal">
-            <i class="fas fa-plus"></i> Add New Table
-        </button>
+<div class="container-fluid py-4">
+    <div class="page-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1 class="page-title">
+                <i class="fas fa-qrcode"></i>
+                QR Code Management
+            </h1>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTableModal">
+                <i class="fas fa-plus me-2"></i>Add New Table
+            </button>
+        </div>
     </div>
 
     <?php if ($message): ?>
@@ -501,8 +434,9 @@ ob_start();
     </div>
     <?php endif; ?>
 
-    <!-- QR Codes Grid -->
-    <div class="row g-4">
+    <div class="form-container">
+        <div class="form-card">
+            <div class="row g-4">
         <?php 
         // Debug information
         error_log("Number of tables found: " . count($tables));
@@ -534,75 +468,76 @@ ob_start();
                 error_log("File exists: " . (file_exists($qr_path) ? "Yes" : "No"));
             }
         ?>
-        <div class="col-12 col-sm-6 col-md-4 col-xl-3">
-            <div class="card qr-card">
-                <div class="card-body text-center">
+        <div class="qr-card-wrapper">
+            <div class="qr-card">
+                <!-- Status Indicator -->
+                <?php
+                $status_class = '';
+                $status_icon = '';
+                if (!empty($table['image_path']) && file_exists($qr_path)) {
+                    if (strtotime($table['expiry_date']) < time()) {
+                        $status_class = 'qr-status-expired';
+                        $status_icon = 'fas fa-exclamation-circle';
+                    } else {
+                        $status_class = 'qr-status-active';
+                        $status_icon = 'fas fa-check-circle';
+                    }
+                } else {
+                    $status_class = 'qr-status-invalid';
+                    $status_icon = 'fas fa-times-circle';
+                }
+                ?>
+                <div class="qr-status-icon <?php echo $status_class; ?>">
+                    <i class="<?php echo $status_icon; ?>"></i>
+                </div>
+
+                <div class="card-body">
                     <div class="table-number">
                         Table <?php echo htmlspecialchars($table['table_number']); ?>
                     </div>
                     
-                    <?php if (!empty($table['image_path'])): ?>
-                        <div class="qr-preview">
-                            <?php if (file_exists($qr_path)): ?>
-                                <img src="<?php echo htmlspecialchars($qr_file); ?>" 
-                                     alt="QR Code for Table <?php echo htmlspecialchars($table['table_number']); ?>"
-                                     class="qr-image img-fluid mb-3"
-                                     data-bs-toggle="modal"
-                                     data-bs-target="#qrModal<?php echo $table['id']; ?>">
-                                
-                                <!-- Debug info -->
-                                <?php if (isset($_GET['debug'])): ?>
-                                <div class="alert alert-info mt-2">
-                                    <small>
-                                        Image Path: <?php echo $table['image_path']; ?><br>
-                                        Web Path: <?php echo $qr_file; ?><br>
-                                        File Path: <?php echo $qr_path; ?><br>
-                                        File Exists: <?php echo file_exists($qr_path) ? 'Yes' : 'No'; ?><br>
-                                        File Size: <?php echo file_exists($qr_path) ? filesize($qr_path) . ' bytes' : 'N/A'; ?><br>
-                                        File Permissions: <?php echo file_exists($qr_path) ? substr(sprintf('%o', fileperms($qr_path)), -4) : 'N/A'; ?>
-                                    </small>
-                        </div>
-                                <?php endif; ?>
-
-                        <div class="qr-info">
-                                    <i class="fas fa-clock me-1"></i>
-                                    Valid until: <?php echo date('d/m/Y h:i A', strtotime($table['expiry_date'])); ?>
-                        </div>
-                            <?php else: ?>
-                                <div class="alert alert-warning">
-                                    QR code file missing: <?php echo htmlspecialchars($table['image_path']); ?>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    <?php else: ?>
-                        <div class="qr-placeholder mb-3">
-                            <i class="fas fa-qrcode"></i>
-                            <div class="mt-2 small text-muted">
-                                No QR code generated yet
+                    <div class="qr-image-container">
+                        <?php if (!empty($table['image_path']) && file_exists($qr_path)): ?>
+                            <img src="<?php echo htmlspecialchars($qr_file); ?>" 
+                                 alt="QR Code for Table <?php echo htmlspecialchars($table['table_number']); ?>"
+                                 class="qr-image"
+                                 data-bs-toggle="modal"
+                                 data-bs-target="#qrModal<?php echo $table['id']; ?>">
+                        <?php else: ?>
+                            <div class="qr-placeholder">
+                                <i class="fas fa-qrcode"></i>
+                                <div class="placeholder-text">No QR code generated yet</div>
                             </div>
+                        <?php endif; ?>
+                    </div>
+                    
+                    <?php if (!empty($table['image_path']) && file_exists($qr_path)): ?>
+                        <div class="qr-info">
+                            <i class="fas fa-clock"></i>
+                            Valid until: <?php echo date('d/m/Y h:i A', strtotime($table['expiry_date'])); ?>
                         </div>
                     <?php endif; ?>
                     
-                    <div class="qr-actions mt-3">
+                    <div class="qr-actions">
                         <form method="POST" class="d-inline">
                             <input type="hidden" name="table_id" value="<?php echo $table['id']; ?>">
                             <input type="hidden" name="table_number" value="<?php echo $table['table_number']; ?>">
                             <button type="submit" name="generate_qr" class="btn btn-primary">
-                                <i class="fas fa-sync-alt me-2"></i>
-                                <?php echo (!empty($table['image_path']) && file_exists($qr_path)) ? 'Regenerate QR' : 'Generate QR'; ?>
+                                <i class="fas fa-sync-alt"></i>
+                                <?php echo (!empty($table['image_path']) && file_exists($qr_path)) ? 'Regenerate' : 'Generate'; ?>
                             </button>
                         </form>
                         
                         <?php if (!empty($table['image_path']) && file_exists($qr_path)): ?>
                             <button type="button" class="btn btn-info" onclick="window.open('<?php echo htmlspecialchars($qr_file); ?>', '_blank')">
-                                <i class="fas fa-eye me-2"></i>View QR
+                                <i class="fas fa-eye"></i>View
                             </button>
                         <?php endif; ?>
                         
                         <button type="button" class="btn btn-danger" 
                                 data-bs-toggle="modal" 
                                 data-bs-target="#deleteTableModal<?php echo $table['id']; ?>">
-                            <i class="fas fa-trash me-2"></i>Delete
+                            <i class="fas fa-trash"></i>Delete
                         </button>
                     </div>
                 </div>
@@ -675,9 +610,9 @@ ob_start();
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        <button type="button" class="btn btn-success" onclick="printQRCode()">
+                        <a href="print_qr.php?table_id=<?php echo $table['id']; ?>" target="_blank" class="btn btn-success">
                             <i class="fas fa-print me-2"></i>Print QR
-                        </button>
+                        </a>
                         <button type="button" class="btn btn-primary" onclick="downloadQRCode('<?php echo htmlspecialchars($qr_file); ?>', 'table_<?php echo htmlspecialchars($table['table_number']); ?>_qr.png')">
                             <i class="fas fa-download me-2"></i>Download
                         </button>
@@ -687,6 +622,8 @@ ob_start();
         </div>
         <?php endif; ?>
         <?php endforeach; ?>
+            </div>
+        </div>
     </div>
 
     <!-- Add this debug section at the bottom of the page -->

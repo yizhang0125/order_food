@@ -15,7 +15,7 @@ class Dashboard {
                 (SELECT COUNT(*) FROM orders WHERE status = 'processing' AND DATE(created_at) = CURDATE()) as processing_orders,
                 (SELECT COUNT(*) FROM orders WHERE status = 'pending' AND DATE(created_at) = CURDATE()) as pending_orders,
                 (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE DATE(created_at) = CURDATE()) as total_revenue,
-                (SELECT COUNT(*) FROM tables WHERE status = 'occupied') as active_tables,
+                (SELECT COUNT(*) FROM tables) as total_tables,
                 (SELECT COUNT(*) FROM menu_items WHERE status = 'available') as total_items";
             
             $stmt = $this->db->prepare($statsQuery);
@@ -70,15 +70,15 @@ class Dashboard {
         }
     }
 
-    public function getActiveTableCount() {
+    public function getTotalTableCount() {
         try {
-            $query = "SELECT COUNT(*) as active_tables FROM tables WHERE status = 'occupied'";
+            $query = "SELECT COUNT(*) as total_tables FROM tables";
             $stmt = $this->db->prepare($query);
             $stmt->execute();
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            return $result['active_tables'];
+            return $result['total_tables'];
         } catch (PDOException $e) {
-            throw new Exception("Error fetching active tables: " . $e->getMessage());
+            throw new Exception("Error fetching total tables: " . $e->getMessage());
         }
     }
 

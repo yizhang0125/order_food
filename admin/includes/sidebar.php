@@ -1,5 +1,21 @@
 <?php
 $current_page = basename($_SERVER['PHP_SELF']);
+
+// Check if user has any permissions to show sidebar
+$has_permissions = false;
+
+if ($_SESSION['user_type'] === 'admin') {
+    $has_permissions = true;
+} else if (isset($_SESSION['staff_permissions']) && is_array($_SESSION['staff_permissions'])) {
+    // Check if staff has any permissions
+    $has_permissions = !empty($_SESSION['staff_permissions']);
+}
+
+// If no permissions, don't show sidebar at all
+if (!$has_permissions) {
+    echo '<!-- No permissions - sidebar hidden -->';
+    return;
+}
 ?>
 <!-- Custom CSS for Sidebar -->
 <style>
@@ -182,18 +198,37 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <span>Dashboard</span>
                 </a>
             </li>
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('view_orders', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a href="orders.php" class="nav-link <?php echo $current_page == 'orders.php' ? 'active' : ''; ?>">
                     <i class="fas fa-clipboard-list"></i>
                     <span>Orders</span>
                 </a>
             </li>
+            <?php endif; ?>
+
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('manage_payments', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a href="payment_counter.php" class="nav-link <?php echo $current_page == 'payment_counter.php' ? 'active' : ''; ?>">
                     <i class="fas fa-cash-register"></i>
                     <span>Payment Counter</span>
                 </a>
             </li>
+            <?php endif; ?>
+
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('view_orders', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'completed_orders.php' ? 'active' : ''; ?>" href="completed_orders.php">
                     <i class="fas fa-check-circle"></i>
@@ -206,12 +241,20 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <span>Cancelled Orders</span>
                 </a>
             </li>
+            <?php endif; ?>
+
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('kitchen_access', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']) ||
+                        $_SESSION['staff_position'] === 'kitchen'))): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'kitchen.php' ? 'active' : ''; ?>" href="kitchen.php">
                     <i class="fas fa-utensils"></i>
                     <span>Kitchen Display</span>
                 </a>
             </li>
+            <?php endif; ?>
         </ul>
     </div>
 
@@ -221,6 +264,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="menu-section">
         <h6 class="menu-title">Management</h6>
         <ul class="nav flex-column">
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('manage_menu', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'menu_management.php' ? 'active' : ''; ?>" href="menu_management.php">
                     <i class="fas fa-book-open"></i>
@@ -233,24 +281,59 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <span>Categories</span>
                 </a>
             </li>
+            <?php endif; ?>
+
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('table_management', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'tables.php' ? 'active' : ''; ?>" href="tables.php">
                     <i class="fas fa-chair"></i>
                     <span>Tables</span>
                 </a>
             </li>
+            <?php endif; ?>
+
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('view_payments', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'payment_details.php' ? 'active' : ''; ?>" href="payment_details.php">
                     <i class="fas fa-money-bill-wave"></i>
                     <span>Payment Details</span>
                 </a>
             </li>
+            <?php endif; ?>
+
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('table_management', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'qr_codes.php' ? 'active' : ''; ?>" href="qr_codes.php">
                     <i class="fas fa-qrcode"></i>
                     <span>QR Codes</span>
                 </a>
             </li>
+            <?php endif; ?>
+
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('staff_management', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
+            <li class="nav-item">
+                <a class="nav-link <?php echo $current_page == 'staff_management.php' ? 'active' : ''; ?>" href="staff_management.php">
+                    <i class="fas fa-users"></i>
+                    <span>Staff Management</span>
+                </a>
+            </li>
+            <?php endif; ?>
         </ul>
     </div>
 
@@ -260,18 +343,31 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="menu-section">
         <h6 class="menu-title">Analytics & Settings</h6>
         <ul class="nav flex-column">
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('view_reports', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'reports.php' ? 'active' : ''; ?>" href="reports.php">
                     <i class="fas fa-chart-line"></i>
                     <span>Reports</span>
                 </a>
             </li>
+            <?php endif; ?>
+
+            <?php if ($_SESSION['user_type'] === 'admin' || 
+                      (isset($_SESSION['staff_permissions']) && 
+                       (in_array('manage_settings', $_SESSION['staff_permissions']) || 
+                        in_array('all', $_SESSION['staff_permissions']))
+                      )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'settings.php' ? 'active' : ''; ?>" href="settings.php">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
                 </a>
             </li>
+            <?php endif; ?>
         </ul>
     </div>
 </div>

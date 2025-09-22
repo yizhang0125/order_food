@@ -86,292 +86,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 // Get all categories with item counts
 $categories = $categoryModel->getCategoryWithItemCount();
 
-// Custom CSS
-$extra_css = <<<'CSS'
-<style>
-:root {
-    --primary: #4F46E5;
-    --primary-dark: #3730A3;
-    --primary-light: #818CF8;
-    --success: #059669;
-    --warning: #F59E0B;
-    --danger: #DC2626;
-    --surface: #FFFFFF;
-    --gray-50: #F8FAFC;
-    --gray-100: #F1F5F9;
-    --gray-200: #E2E8F0;
-    --gray-600: #475569;
-}
-
-.category-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 2rem;
-    padding: 2rem;
-}
-
-.category-card {
-    position: relative;
-    background: var(--surface);
-    border-radius: 20px;
-    overflow: hidden;
-    transition: all 0.4s ease;
-    border: 1px solid var(--gray-200);
-}
-
-.category-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-}
-
-.category-icon {
-    position: absolute;
-    top: -30px;
-    left: -30px;
-    width: 120px;
-    height: 120px;
-    background: linear-gradient(135deg, var(--primary), var(--primary-light));
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transform: rotate(-15deg);
-    transition: all 0.4s ease;
-}
-
-.category-card:hover .category-icon {
-    transform: rotate(0deg);
-}
-
-.category-icon i {
-    font-size: 2.5rem;
-    color: white;
-    transform: rotate(15deg);
-    transition: all 0.4s ease;
-}
-
-.category-card:hover .category-icon i {
-    transform: rotate(0deg) scale(1.2);
-}
-
-.category-header {
-    position: relative;
-    padding: 2rem 2rem 2rem 5rem;
-    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-    color: white;
-    min-height: 120px;
-    display: flex;
-    align-items: center;
-}
-
-.category-name {
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin: 0;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.category-status {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-}
-
-.status-active {
-    background: rgba(5, 150, 105, 0.2);
-    color: #10B981;
-    border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.status-inactive {
-    background: rgba(220, 38, 38, 0.2);
-    color: #EF4444;
-    border: 1px solid rgba(239, 68, 68, 0.2);
-}
-
-.category-body {
-    padding: 2rem;
-}
-
-.category-description {
-    color: var(--gray-600);
-    font-size: 0.95rem;
-    line-height: 1.6;
-    margin-bottom: 2rem;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.category-stats {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-}
-
-.stat-box {
-    position: relative;
-    padding: 1.5rem;
-    border-radius: 15px;
-    background: var(--gray-50);
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    transition: all 0.3s ease;
-}
-
-.stat-box:hover {
-    background: white;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-    transform: translateY(-4px);
-}
-
-.stat-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    background: var(--primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.stat-icon i {
-    font-size: 1.25rem;
-    color: white;
-}
-
-.stat-content {
-    flex: 1;
-}
-
-.stat-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--primary);
-    line-height: 1;
-    margin-bottom: 0.25rem;
-}
-
-.stat-label {
-    font-size: 0.875rem;
-    color: var(--gray-600);
-    font-weight: 500;
-}
-
-.category-actions {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
-    padding: 1.5rem;
-    background: var(--gray-50);
-    border-top: 1px solid var(--gray-100);
-}
-
-.action-btn {
-    position: relative;
-    padding: 0.875rem;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 0.875rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    transition: all 0.3s ease;
-    border: none;
-    cursor: pointer;
-}
-
-.action-btn i {
-    font-size: 1.1rem;
-    transition: transform 0.3s ease;
-}
-
-.btn-edit {
-    background: var(--primary);
-    color: white;
-}
-
-.btn-edit:hover {
-    background: var(--primary-dark);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(79, 70, 229, 0.2);
-}
-
-.btn-toggle {
-    background: var(--warning);
-    color: white;
-}
-
-.btn-toggle:hover {
-    background: #D97706;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(245, 158, 11, 0.2);
-}
-
-.btn-delete {
-    background: var(--danger);
-    color: white;
-}
-
-.btn-delete:hover {
-    background: #B91C1C;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(220, 38, 38, 0.2);
-}
-
-@media (max-width: 768px) {
-    .category-grid {
-        grid-template-columns: 1fr;
-        padding: 1rem;
-        gap: 1.5rem;
-    }
-
-    .category-icon {
-        width: 100px;
-        height: 100px;
-        top: -25px;
-        left: -25px;
-    }
-
-    .category-icon i {
-        font-size: 2rem;
-    }
-
-    .category-header {
-        padding: 1.5rem 1.5rem 1.5rem 4rem;
-        min-height: 100px;
-    }
-}
-</style>
-CSS;
+// Include external CSS file
+$extra_css = '<link rel="stylesheet" href="css/categories.css">';
 
 // Start output buffering
 ob_start();
 ?>
 
-<div class="container-fluid">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h1 class="h3 mb-0">Category Management</h1>
-            <p class="text-muted">Manage your menu categories</p>
+<div class="container-fluid py-4">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="page-title">
+                    <i class="fas fa-folder-open"></i>
+                    Category Management
+                </h1>
+                <p class="page-subtitle">Manage your menu categories</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                    <i class="fas fa-plus"></i>Add New Category
+                </button>
+            </div>
         </div>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
-            <i class="fas fa-plus me-2"></i>Add New Category
-        </button>
     </div>
 
     <!-- Alert Messages -->
@@ -382,37 +120,44 @@ ob_start();
     </div>
     <?php endif; ?>
 
-    <!-- Search and Filter -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <div class="position-relative search-box">
-                        <i class="fas fa-search"></i>
-                        <input type="text" class="form-control" id="categorySearch" placeholder="Search categories...">
-                    </div>
+    <!-- Search and Filter Section -->
+    <div class="search-filter-section">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="categorySearch" placeholder="Search categories...">
                 </div>
-                <div class="col-md-6 text-md-end mt-3 mt-md-0">
-                    <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-outline-primary active" data-filter="all">All</button>
-                        <button type="button" class="btn btn-outline-primary" data-filter="active">Active</button>
-                        <button type="button" class="btn btn-outline-primary" data-filter="inactive">Inactive</button>
-                    </div>
+            </div>
+            <div class="col-md-6">
+                <div class="filter-buttons">
+                    <button type="button" class="filter-btn active" data-filter="all">
+                        <i class="fas fa-th-large"></i>All
+                    </button>
+                    <button type="button" class="filter-btn" data-filter="active">
+                        <i class="fas fa-check-circle"></i>Active
+                    </button>
+                    <button type="button" class="filter-btn" data-filter="inactive">
+                        <i class="fas fa-times-circle"></i>Inactive
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Categories Grid -->
-    <div class="category-grid">
+    <div class="categories-grid">
         <?php foreach ($categories as $category): ?>
         <div class="category-card category-item" data-status="<?php echo $category['status']; ?>">
             <div class="category-header">
+                <div class="category-icon">
+                    <i class="fas fa-folder"></i>
+                </div>
                 <h3 class="category-name">
                     <?php echo htmlspecialchars($category['name']); ?>
                 </h3>
                 <span class="category-status">
-                    <i class="fas fa-<?php echo $category['status'] === 'active' ? 'check-circle' : 'times-circle'; ?> me-1"></i>
+                    <i class="fas fa-<?php echo $category['status'] === 'active' ? 'check-circle' : 'times-circle'; ?>"></i>
                     <?php echo ucfirst($category['status']); ?>
                 </span>
             </div>
@@ -423,11 +168,11 @@ ob_start();
                 </p>
                 
                 <div class="category-stats">
-                    <div class="stat-box">
+                    <div class="stat-item">
                         <div class="stat-value"><?php echo $category['item_count']; ?></div>
                         <div class="stat-label">Menu Items</div>
                     </div>
-                    <div class="stat-box">
+                    <div class="stat-item">
                         <div class="stat-value">
                             <i class="fas fa-<?php echo $category['status'] === 'active' ? 'check' : 'times'; ?>"></i>
                         </div>
@@ -440,9 +185,9 @@ ob_start();
                 <button type="button" class="action-btn btn-edit" 
                         data-bs-toggle="modal" 
                         data-bs-target="#editCategoryModal" 
-                        data-category='<?php echo json_encode($category); ?>'>
+                        data-category='<?php echo json_encode($category); ?>'
+                        title="Edit">
                     <i class="fas fa-edit"></i>
-                    Edit
                 </button>
                 
                 <form method="POST" class="d-inline flex-grow-1">
@@ -450,18 +195,17 @@ ob_start();
                     <input type="hidden" name="category_id" value="<?php echo $category['id']; ?>">
                     <input type="hidden" name="status" 
                            value="<?php echo $category['status'] === 'active' ? 'inactive' : 'active'; ?>">
-                    <button type="submit" class="action-btn btn-toggle w-100">
+                    <button type="submit" class="action-btn btn-toggle w-100"
+                            title="<?php echo $category['status'] === 'active' ? 'Deactivate' : 'Activate'; ?>">
                         <i class="fas fa-<?php echo $category['status'] === 'active' ? 'times' : 'check'; ?>"></i>
-                        <?php echo $category['status'] === 'active' ? 'Deactivate' : 'Activate'; ?>
                     </button>
                 </form>
                 
                 <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this category?');">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="category_id" value="<?php echo $category['id']; ?>">
-                    <button type="submit" class="action-btn btn-delete">
+                    <button type="submit" class="action-btn btn-delete" title="Delete">
                         <i class="fas fa-trash"></i>
-                        Delete
                     </button>
                 </form>
             </div>
@@ -470,11 +214,11 @@ ob_start();
         
         <?php if (empty($categories)): ?>
         <div class="empty-state">
-            <i class="fas fa-folder-open empty-state-icon"></i>
+            <i class="fas fa-folder-open empty-icon"></i>
             <h4>No Categories Found</h4>
-            <p class="empty-state-text">Start by adding your first category</p>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
-                <i class="fas fa-plus me-2"></i>Add Category
+            <p class="empty-text">Start by adding your first category</p>
+            <button class="add-category-btn" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                <i class="fas fa-plus"></i>Add Category
             </button>
         </div>
         <?php endif; ?>
@@ -734,6 +478,25 @@ document.addEventListener("DOMContentLoaded", function() {
                     }, 300);
                 }
             });
+        });
+    });
+
+    // Edit modal functionality
+    const editButtons = document.querySelectorAll(".btn-edit");
+    const editModal = document.getElementById("editCategoryModal");
+    
+    editButtons.forEach(button => {
+        button.addEventListener("click", function() {
+            const categoryData = JSON.parse(this.getAttribute("data-category"));
+            
+            // Populate the edit form with existing data
+            document.getElementById("edit_category_id").value = categoryData.id;
+            document.getElementById("edit_name").value = categoryData.name;
+            document.getElementById("edit_description").value = categoryData.description || "";
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(editModal);
+            modal.show();
         });
     });
 });

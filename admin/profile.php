@@ -234,17 +234,48 @@ ob_start();
                     <div class="profile-avatar mx-auto">
                         <i class="fas fa-user"></i>
                     </div>
-                    <h4 class="mb-1"><?php echo htmlspecialchars($_SESSION['admin_username']); ?></h4>
-                    <p class="text-muted">Administrator</p>
+                    <?php 
+                        $isAdmin = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin';
+                        $profileName = $isAdmin
+                            ? (isset($_SESSION['admin_username']) ? htmlspecialchars($_SESSION['admin_username']) : 'Admin')
+                            : (isset($_SESSION['staff_name']) ? htmlspecialchars($_SESSION['staff_name']) : 'Staff');
+                        $profileRole = $isAdmin
+                            ? 'Administrator'
+                            : (isset($_SESSION['staff_position']) ? ucfirst(htmlspecialchars($_SESSION['staff_position'])) : 'Staff');
+                    ?>
+                    <h4 class="mb-1"><?php echo $profileName; ?></h4>
+                    <p class="text-muted"><?php echo $profileRole; ?></p>
                 </div>
                 <ul class="info-list mt-4">
                     <li>
                         <span class="info-label">Email</span>
-                        <span class="info-value">admin@example.com</span>
+                        <?php 
+                            $profileEmail = $isAdmin
+                                ? (isset($_SESSION['admin_email']) ? htmlspecialchars($_SESSION['admin_email']) : '-')
+                                : (
+                                    isset($_SESSION['staff_email']) ? htmlspecialchars($_SESSION['staff_email']) : (
+                                        isset($_SESSION['email']) ? htmlspecialchars($_SESSION['email']) : '-'
+                                    )
+                                );
+                            $employeeNo = $isAdmin
+                                ? (
+                                    isset($_SESSION['admin_employee_number']) ? htmlspecialchars($_SESSION['admin_employee_number']) : '-'
+                                )
+                                : (
+                                    isset($_SESSION['employee_number']) ? htmlspecialchars($_SESSION['employee_number']) : (
+                                        isset($_SESSION['staff_employee_number']) ? htmlspecialchars($_SESSION['staff_employee_number']) : '-'
+                                    )
+                                );
+                        ?>
+                        <span class="info-value"><?php echo $profileEmail; ?></span>
+                    </li>
+                    <li>
+                        <span class="info-label">Employee No</span>
+                        <span class="info-value"><?php echo $employeeNo; ?></span>
                     </li>
                     <li>
                         <span class="info-label">Role</span>
-                        <span class="info-value">Administrator</span>
+                        <span class="info-value"><?php echo $profileRole; ?></span>
                     </li>
                     <li>
                         <span class="info-label">Member Since</span>

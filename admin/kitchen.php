@@ -15,42 +15,91 @@ if (!$auth->isLoggedIn()) {
     exit();
 }
 
+// Handle individual order item cancellation
+if (isset($_POST['cancel_item'])) {
+    $order_item_id = $_POST['order_item_id'];
+    
+    if (empty($order_item_id) || !is_numeric($order_item_id)) {
+        $error_message = "Invalid order item ID";
+    } else {
+        if ($orderModel->cancelOrderItem($order_item_id)) {
+            $success_message = "Food item cancelled successfully";
+        } else {
+            $error_message = "Failed to cancel food item";
+        }
+    }
+}
+
 // Update order status if requested
 if (isset($_POST['update_status'])) {
     $order_id = $_POST['order_id'];
     $new_status = $_POST['new_status'];
     
-    // Add special handling for cancelled status
-    if ($new_status === 'cancelled') {
-        if ($orderModel->updateStatus($order_id, 'cancelled')) {
-            $success_message = "Order cancelled successfully";
-        } else {
-            $error_message = "Failed to cancel order";
-        }
+    // Validate order ID
+    if (empty($order_id) || !is_numeric($order_id)) {
+        $error_message = "Invalid order ID";
     } else {
-        // Check if this is a combined order (multiple IDs separated by commas)
-        if (strpos($order_id, ',') !== false) {
-            $order_ids = explode(',', $order_id);
-            $success = true;
+        // Add special handling for cancelled status - ALWAYS single order only
+        if ($new_status === 'cancelled') {
+            // For cancellation, we only handle single orders, never groups
+            // Debug: Log the cancellation attempt
+            error_log("Kitchen: Attempting to cancel order ID: " . $order_id);
             
-            // Update status for each order in the group
-            foreach ($order_ids as $id) {
-                if (!$orderModel->updateStatus($id, $new_status)) {
-                    $success = false;
+            // Check if order exists and is not already cancelled
+            $check_query = "SELECT id, status FROM orders WHERE id = ?";
+            $check_stmt = $db->prepare($check_query);
+            $check_stmt->execute([$order_id]);
+            $order_check = $check_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$order_check) {
+                $error_message = "Order not found";
+                error_log("Kitchen: Order ID " . $order_id . " not found");
+            } elseif ($order_check['status'] === 'cancelled') {
+                $error_message = "Order is already cancelled";
+                error_log("Kitchen: Order ID " . $order_id . " is already cancelled");
+            } elseif ($order_check['status'] === 'completed') {
+                $error_message = "Cannot cancel a completed order";
+                error_log("Kitchen: Cannot cancel completed order ID " . $order_id);
+            } else {
+                // Cancel ONLY this specific order
+                error_log("Kitchen: Cancelling order ID " . $order_id . " (current status: " . $order_check['status'] . ")");
+                if ($orderModel->updateStatus($order_id, 'cancelled')) {
+                    $success_message = "Order #" . str_pad($order_id, 4, '0', STR_PAD_LEFT) . " cancelled successfully";
+                    error_log("Kitchen: Successfully cancelled order ID " . $order_id);
+                } else {
+                    $error_message = "Failed to cancel order";
+                    error_log("Kitchen: Failed to cancel order ID " . $order_id);
                 }
             }
-            
-            if ($success) {
-                $success_message = "All orders status updated successfully";
-            } else {
-                $error_message = "Failed to update some order statuses";
-            }
         } else {
-            // Single order update
-            if ($orderModel->updateStatus($order_id, $new_status)) {
-                $success_message = "Order status updated successfully";
+            // For non-cancellation status updates, check if this is a combined order (multiple IDs separated by commas)
+            if (strpos($order_id, ',') !== false) {
+                $order_ids = explode(',', $order_id);
+                $success = true;
+                $updated_count = 0;
+                
+                // Update status for each order in the group
+                foreach ($order_ids as $id) {
+                    if (is_numeric($id) && $orderModel->updateStatus($id, $new_status)) {
+                        $updated_count++;
+                    } else {
+                        $success = false;
+                    }
+                }
+                
+                if ($success) {
+                    $success_message = "All orders status updated successfully";
+                } else {
+                    $error_message = "Failed to update some order statuses. Updated: " . $updated_count . " out of " . count($order_ids);
+                }
             } else {
-                $error_message = "Failed to update order status";
+                // Single order update
+                if ($orderModel->updateStatus($order_id, $new_status)) {
+                    $status_text = ucfirst($new_status);
+                    $success_message = "Order #" . str_pad($order_id, 4, '0', STR_PAD_LEFT) . " status updated to " . $status_text;
+                } else {
+                    $error_message = "Failed to update order status";
+                }
             }
         }
     }
@@ -62,7 +111,7 @@ try {
     $processing_orders = $orderModel->getOrdersByStatus('processing');
     $all_orders = array_merge($pending_orders ?? [], $processing_orders ?? []);
     usort($all_orders, function($a, $b) {
-        return strtotime($a['created_at']) - strtotime($b['created_at']);
+        return strtotime($b['created_at']) - strtotime($a['created_at']); // Latest orders first
     });
 } catch (Exception $e) {
     $error_message = $e->getMessage();
@@ -338,6 +387,18 @@ try {
         border-color: transparent;
     }
 
+    .cancel-item-btn {
+        background: #fee2e2;
+        color: #dc2626;
+        border-color: #fca5a5;
+    }
+
+    .cancel-item-btn:hover {
+        background: #dc2626;
+        color: white;
+        border-color: transparent;
+    }
+
     .order-footer {
         padding: 1.25rem;
         background: var(--color-surface-hover);
@@ -597,6 +658,23 @@ try {
             </div>
         </header>
 
+        <!-- Success/Error Messages -->
+        <?php if (isset($success_message)): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert" style="margin-bottom: 1.5rem; border-radius: 10px; background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0;">
+            <i class="fas fa-check-circle me-2"></i>
+            <?php echo htmlspecialchars($success_message); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        <?php endif; ?>
+
+        <?php if (isset($error_message)): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert" style="margin-bottom: 1.5rem; border-radius: 10px; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <?php echo htmlspecialchars($error_message); ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        <?php endif; ?>
+
         <?php if (empty($all_orders)): ?>
         <div class="no-orders">
             <i class="fas fa-check-circle"></i>
@@ -623,39 +701,35 @@ try {
                         <div class="table-label">Table</div>
                         <div class="table-number"><?php echo htmlspecialchars($order['table_number']); ?></div>
                     </div>
-                    <div class="time-badge <?php echo $time_warning ? 'warning' : ''; ?>">
+                    <div class="time-badge <?php echo $time_warning ? 'warning' : ''; ?>" 
+                         title="Order placed at <?php echo date('h:i A', $order_time); ?> (<?php echo $minutes; ?> minutes ago)">
                         <i class="fas fa-clock"></i>
-                        <?php echo $minutes; ?> min
+                        <?php echo date('h:i A', $order_time); ?>
                     </div>
                 </div>
 
                 <div class="items-list">
                     <?php 
-                    $items = explode(', ', $order['items']);
-                    $total_items = count($items);
+                    $total_items = count($order['order_items']);
                     $completed_items = 0;
 
-                    // Parse items and their special instructions
-                    foreach ($items as $index => $item):
-                        $item_parts = explode(' (', $item);
-                        $item_name = $item_parts[0];
-                        $quantity = rtrim($item_parts[1], ')');
-
+                    // Display each order item with individual cancel option
+                    foreach ($order['order_items'] as $index => $order_item):
                         // Find special instruction for this item
                         $item_instruction = '';
                         if (!empty($order['special_instructions'])) {
                             foreach ($order['special_instructions'] as $instruction) {
-                                if ($instruction['item'] === $item_name) {
+                                if ($instruction['item'] === $order_item['name']) {
                                     $item_instruction = $instruction['instructions'];
                                     break;
                                 }
                             }
                         }
                     ?>
-                    <div class="item" data-item-id="<?php echo $index; ?>">
-                        <div class="quantity"><?php echo $quantity; ?>×</div>
+                    <div class="item" data-item-id="<?php echo $order_item['id']; ?>">
+                        <div class="quantity"><?php echo $order_item['quantity']; ?>×</div>
                         <div class="item-details">
-                            <div class="item-name"><?php echo htmlspecialchars($item_name); ?></div>
+                            <div class="item-name"><?php echo htmlspecialchars($order_item['name']); ?></div>
                             <?php if (!empty($item_instruction)): ?>
                                 <div class="instruction-note">
                                     <i class="fas fa-exclamation-circle"></i>
@@ -667,6 +741,12 @@ try {
                             <button class="item-btn" onclick="toggleItemComplete(this)" title="Mark as complete">
                                 <i class="fas fa-check"></i>
                             </button>
+                            <form method="POST" style="display: inline;" onsubmit="return confirmCancelItem('<?php echo htmlspecialchars($order_item['name']); ?>')">
+                                <input type="hidden" name="order_item_id" value="<?php echo $order_item['id']; ?>">
+                                <button type="submit" name="cancel_item" class="item-btn cancel-item-btn" title="Cancel this food item">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </form>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -698,11 +778,12 @@ try {
                         </form>
                     </div>
                     <div class="action-buttons" style="margin-top: 0.5rem;">
-                        <form method="POST" class="cancel-form" onsubmit="return confirmCancel()" style="width: 100%;">
+                        <form method="POST" class="cancel-form" onsubmit="return confirmCancel(<?php echo $order['id']; ?>)" style="width: 100%;">
                             <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
                             <input type="hidden" name="new_status" value="cancelled">
-                            <button type="submit" name="update_status" class="cancel-btn" style="width: 100%;">
-                                <i class="fas fa-times"></i> CANCEL ORDER
+                            <button type="submit" name="update_status" class="cancel-btn" style="width: 100%;" 
+                                    title="Cancel this order - this action cannot be undone">
+                                <i class="fas fa-ban"></i> CANCEL ORDER
                             </button>
                         </form>
                     </div>
@@ -790,8 +871,12 @@ try {
         }
     });
 
-    function confirmCancel() {
-        return confirm('Are you sure you want to cancel this order?');
+    function confirmCancel(orderId) {
+        return confirm('Are you sure you want to cancel Order #' + String(orderId).padStart(4, '0') + '?\n\nThis action cannot be undone and the order will be marked as cancelled.');
+    }
+
+    function confirmCancelItem(itemName) {
+        return confirm('Are you sure you want to cancel "' + itemName + '"?\n\nThis will remove this food item from the order. The order total will be updated automatically.');
     }
     </script>
 </body>

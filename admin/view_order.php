@@ -3,11 +3,39 @@ session_start();
 require_once(__DIR__ . '/../config/Database.php');
 require_once(__DIR__ . '/../classes/Auth.php');
 require_once(__DIR__ . '/../classes/Order.php');
+require_once(__DIR__ . '/../classes/SystemSettings.php');
 
 $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
 $orderModel = new Order($db);
+$systemSettings = new SystemSettings($db);
+
+// Custom rounding function for payment counter
+if (!function_exists('customRound')) {
+    function customRound($amount) {
+        // Get the decimal part (last 2 digits)
+        $decimal_part = fmod($amount * 100, 100);
+        
+        // Handle rounding rules based on decimal part
+        if ($decimal_part >= 11 && $decimal_part <= 12) {
+            // Round to .10 (e.g., 69.11, 69.12 -> 69.10)
+            return floor($amount) + 0.10;
+        } elseif ($decimal_part >= 13 && $decimal_part <= 14) {
+            // Round to .15 (e.g., 69.13, 69.14 -> 69.15)
+            return floor($amount) + 0.15;
+        } elseif ($decimal_part >= 16 && $decimal_part <= 17) {
+            // Round to .15 (e.g., 69.16, 69.17 -> 69.15)
+            return floor($amount) + 0.15;
+        } elseif ($decimal_part >= 18 && $decimal_part <= 19) {
+            // Round to .20 (e.g., 69.18, 69.19 -> 69.20)
+            return floor($amount) + 0.20;
+        } else {
+            // Standard rounding for other cases
+            return round($amount, 2);
+        }
+    }
+}
 
 // Check if user is logged in
 if (!$auth->isLoggedIn()) {
@@ -75,7 +103,7 @@ $status_colors = [
                     </div>
                     <div class="summary-item">
                         <span class="label">Total Amount</span>
-                        <span class="value amount">RM <?php echo number_format($order['total_amount'], 2); ?></span>
+                        <span class="value amount"><?php echo $systemSettings->getCurrencySymbol(); ?> <?php echo number_format(customRound($order['total_amount']), 2); ?></span>
                     </div>
                 </div>
             </div>
@@ -122,23 +150,35 @@ $status_colors = [
                                         </div>
                                     </td>
                                     <td class="text-center"><?php echo $item['quantity']; ?></td>
-                                    <td class="text-end">RM <?php echo number_format($item['price'], 2); ?></td>
-                                    <td class="text-end">RM <?php echo number_format($item_total, 2); ?></td>
+                                    <td class="text-end"><?php echo $systemSettings->getCurrencySymbol(); ?> <?php echo number_format($item['price'], 2); ?></td>
+                                    <td class="text-end"><?php echo $systemSettings->getCurrencySymbol(); ?> <?php echo number_format($item_total, 2); ?></td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
                             <tfoot>
+                                <?php
+                                // Calculate tax and total using dynamic settings
+                                $tax_rate = $systemSettings->getTaxRate();
+                                $tax_amount = $subtotal * $tax_rate;
+                                $total_with_tax = $subtotal + $tax_amount;
+                                $tax_name = $systemSettings->getTaxName();
+                                $tax_percent = $systemSettings->getTaxRatePercent();
+                                $currency_symbol = $systemSettings->getCurrencySymbol();
+                                
+                                // Apply custom rounding to total
+                                $total_with_tax = customRound($total_with_tax);
+                                ?>
                                 <tr>
                                     <td colspan="3" class="text-end">Subtotal:</td>
-                                    <td class="text-end">RM <?php echo number_format($subtotal, 2); ?></td>
+                                    <td class="text-end"><?php echo $currency_symbol; ?> <?php echo number_format($subtotal, 2); ?></td>
                                 </tr>
                                 <tr>
-                                    <td colspan="3" class="text-end">SST (6%):</td>
-                                    <td class="text-end">RM <?php echo number_format($subtotal * 0.06, 2); ?></td>
+                                    <td colspan="3" class="text-end"><?php echo $tax_name; ?> (<?php echo $tax_percent; ?>%):</td>
+                                    <td class="text-end"><?php echo $currency_symbol; ?> <?php echo number_format($tax_amount, 2); ?></td>
                                 </tr>
                                 <tr>
                                     <td colspan="3" class="text-end fw-bold">Total Amount:</td>
-                                    <td class="text-end fw-bold">RM <?php echo number_format($subtotal * 1.06, 2); ?></td>
+                                    <td class="text-end fw-bold"><?php echo $currency_symbol; ?> <?php echo number_format($total_with_tax, 2); ?></td>
                                 </tr>
                             </tfoot>
                         </table>

@@ -7,6 +7,32 @@ $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
 
+// Custom rounding function for payment counter
+if (!function_exists('customRound')) {
+    function customRound($amount) {
+        // Get the decimal part (last 2 digits)
+        $decimal_part = fmod($amount * 100, 100);
+        
+        // Handle rounding rules based on decimal part
+        if ($decimal_part >= 11 && $decimal_part <= 12) {
+            // Round to .10 (e.g., 69.11, 69.12 -> 69.10)
+            return floor($amount) + 0.10;
+        } elseif ($decimal_part >= 13 && $decimal_part <= 14) {
+            // Round to .15 (e.g., 69.13, 69.14 -> 69.15)
+            return floor($amount) + 0.15;
+        } elseif ($decimal_part >= 16 && $decimal_part <= 17) {
+            // Round to .15 (e.g., 69.16, 69.17 -> 69.15)
+            return floor($amount) + 0.15;
+        } elseif ($decimal_part >= 18 && $decimal_part <= 19) {
+            // Round to .20 (e.g., 69.18, 69.19 -> 69.20)
+            return floor($amount) + 0.20;
+        } else {
+            // Standard rounding for other cases
+            return round($amount, 2);
+        }
+    }
+}
+
 // Check if user is logged in
 if (!$auth->isLoggedIn()) {
     header('Location: login.php');
@@ -21,7 +47,8 @@ $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', s
 try {
     // First, get all payments within the date range
     $sql = "SELECT p.payment_id, p.order_id, p.amount, p.payment_status, 
-            p.payment_date, p.cash_received, p.change_amount,
+            p.payment_date, p.cash_received, p.change_amount, p.processed_by_name,
+            p.payment_method, p.tng_reference,
             o.id as order_id, t.table_number, o.created_at as order_date,
             GROUP_CONCAT(CONCAT(m.name, ' (', oi.quantity, ')') SEPARATOR ', ') as items_list,
             SUM(oi.quantity) as item_count
@@ -59,9 +86,12 @@ try {
                 'cash_received' => $payment['cash_received'],
                 'change_amount' => $payment['change_amount'],
                 'payment_statuses' => [],
+                'payment_methods' => [],
+                'tng_references' => [],
                 'latest_payment_date' => $payment['payment_date'],
                 'items_list' => [],
-                'item_count' => 0
+                'item_count' => 0,
+                'processed_by_name' => $payment['processed_by_name']
             ];
         }
         
@@ -71,6 +101,8 @@ try {
         $grouped_payments[$key]['order_ids'][] = $payment['order_id'];
         $grouped_payments[$key]['payment_amounts'][] = $payment['amount'];
         $grouped_payments[$key]['payment_statuses'][] = $payment['payment_status'];
+        $grouped_payments[$key]['payment_methods'][] = $payment['payment_method'];
+        $grouped_payments[$key]['tng_references'][] = $payment['tng_reference'];
         $grouped_payments[$key]['total_amount'] += floatval($payment['amount']);
         
         // Add items to the items list without duplicates
@@ -172,7 +204,7 @@ ob_start();
             </div>
             <div class="summary-info">
                 <h3>Total Amount</h3>
-                <p>RM <?php echo number_format($total_amount, 2); ?></p>
+                <p>RM <?php echo number_format(customRound($total_amount), 2); ?></p>
             </div>
         </div>
     </div>
@@ -187,9 +219,11 @@ ob_start();
                         <th>Table</th>
                         <th>Items</th>
                         <th>Payment Amount</th>
+                        <th>Payment Method</th>
                         <th>Cash Received</th>
                         <th>Change</th>
                         <th>Payment Status</th>
+                        <th>Payment By</th>
                         <th>Payment Date</th>
                         <th>Actions</th>
                     </tr>
@@ -197,7 +231,7 @@ ob_start();
                 <tbody>
                     <?php if (empty($payments)): ?>
                     <tr>
-                        <td colspan="10" class="text-center py-4">
+                        <td colspan="12" class="text-center py-4">
                             <i class="fas fa-inbox fa-2x mb-3 text-muted d-block"></i>
                             No payments found for the selected date range
                         </td>
@@ -254,16 +288,57 @@ ob_start();
                                 </div>
                             </td>
                             <td>
-                                <span class="payment-amount">RM <?php echo number_format($payment['total_amount'], 2); ?></span>
+                                <span class="payment-amount">RM <?php echo number_format(customRound($payment['total_amount']), 2); ?></span>
                                 <?php if (count($payment_ids) > 1): ?>
                                 <div class="small text-muted">
                                     <?php 
                                     $amount_details = array_map(function($amt) {
-                                        return 'RM ' . number_format(floatval($amt), 2);
+                                        return 'RM ' . number_format(customRound(floatval($amt)), 2);
                                     }, $payment['payment_amounts_array']);
                                     echo implode(', ', array_slice($amount_details, 0, 3));
                                     if (count($amount_details) > 3) echo ', ...';
                                     ?>
+                                </div>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php 
+                                // Get unique payment methods for this group
+                                $unique_methods = array_unique($payment['payment_methods']);
+                                if (count($unique_methods) == 1): 
+                                    $method = $unique_methods[0];
+                                    $icon = '';
+                                    switch($method) {
+                                        case 'cash':
+                                            $icon = 'fas fa-money-bill-wave';
+                                            break;
+                                        case 'card':
+                                            $icon = 'fas fa-credit-card';
+                                            break;
+                                        case 'tng':
+                                            $icon = 'fas fa-mobile-alt';
+                                            break;
+                                        default:
+                                            $icon = 'fas fa-question-circle';
+                                    }
+                                ?>
+                                <span class="payment-method <?php echo $method; ?>">
+                                    <i class="<?php echo $icon; ?>"></i>
+                                    <?php echo strtoupper($method); ?>
+                                </span>
+                                <?php if ($method == 'tng' && !empty($payment['tng_references'][0])): ?>
+                                <div class="small text-muted">
+                                    Ref: <?php echo htmlspecialchars($payment['tng_references'][0]); ?>
+                                </div>
+                                <?php endif; ?>
+                                <?php else: ?>
+                                <span class="payment-method mixed">
+                                    <i class="fas fa-layer-group"></i>
+                                    Mixed
+                                </span>
+                                <div class="small text-muted">
+                                    <?php echo implode(', ', array_map('strtoupper', array_slice($unique_methods, 0, 2))); ?>
+                                    <?php if (count($unique_methods) > 2) echo ', ...'; ?>
                                 </div>
                                 <?php endif; ?>
                             </td>
@@ -295,6 +370,13 @@ ob_start();
                                     Mixed Status
                                 </span>
                                 <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php 
+                                echo isset($payment['processed_by_name']) && $payment['processed_by_name'] !== ''
+                                    ? htmlspecialchars($payment['processed_by_name'])
+                                    : '-';
+                                ?>
                             </td>
                             <td>
                                 <span class="payment-date">
@@ -331,284 +413,8 @@ ob_start();
 <?php
 $content = ob_get_clean();
 
-// Add custom CSS
-$extra_css = '
-<style>
-    :root {
-        --primary: #4f46e5;
-        --success: #10b981;
-        --warning: #f59e0b;
-        --danger: #ef4444;
-        --gray-50: #f9fafb;
-        --gray-100: #f3f4f6;
-        --gray-200: #e5e7eb;
-        --gray-300: #d1d5db;
-        --gray-400: #9ca3af;
-        --gray-500: #6b7280;
-        --gray-600: #4b5563;
-        --gray-700: #374151;
-        --gray-800: #1f2937;
-    }
-
-    .page-header {
-        background: white;
-        padding: 2rem;
-        border-radius: 16px;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-
-    .page-title {
-        font-size: 1.75rem;
-        font-weight: 700;
-        color: var(--gray-800);
-        margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }
-
-    .page-title i {
-        color: var(--primary);
-    }
-
-    .date-filter {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 16px;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-
-    .date-inputs {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
-    }
-
-    .date-input {
-        padding: 0.75rem 1rem;
-        border: 1px solid var(--gray-200);
-        border-radius: 12px;
-        font-size: 0.95rem;
-    }
-
-    .filter-btn {
-        padding: 0.75rem 1.5rem;
-        background: var(--primary);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        transition: all 0.3s ease;
-    }
-
-    .filter-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
-    }
-
-    .summary-cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
-    }
-
-    .summary-card {
-        background: white;
-        border-radius: 16px;
-        padding: 1.5rem;
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-
-    .summary-icon {
-        width: 60px;
-        height: 60px;
-        background: var(--primary);
-        color: white;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.5rem;
-    }
-
-    .summary-info h3 {
-        font-size: 1rem;
-        color: var(--gray-600);
-        margin: 0 0 0.5rem 0;
-    }
-
-    .summary-info p {
-        font-size: 1.75rem;
-        font-weight: 700;
-        color: var(--gray-800);
-        margin: 0;
-    }
-
-    .orders-container {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        overflow: hidden;
-    }
-
-    .orders-table {
-        width: 100%;
-        border-collapse: separate;
-        border-spacing: 0;
-    }
-
-    .orders-table th {
-        background: var(--gray-50);
-        padding: 1rem 1.5rem;
-        font-weight: 600;
-        color: var(--gray-600);
-        text-transform: uppercase;
-        font-size: 0.85rem;
-        letter-spacing: 0.05em;
-        border-bottom: 2px solid var(--gray-200);
-    }
-
-    .orders-table td {
-        padding: 1.25rem 1.5rem;
-        border-bottom: 1px solid var(--gray-200);
-        color: var(--gray-700);
-        font-size: 0.95rem;
-    }
-
-    .payment-id {
-        font-weight: 600;
-        color: var(--primary);
-    }
-
-    .order-link {
-        color: var(--primary);
-        font-weight: 600;
-        text-decoration: none;
-        transition: all 0.3s ease;
-    }
-
-    .order-link:hover {
-        text-decoration: underline;
-    }
-
-    .payment-amount, .cash-received, .change-amount {
-        font-weight: 600;
-        color: var(--gray-800);
-    }
-
-    .payment-date {
-        color: var(--gray-500);
-    }
-
-    .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: 500;
-        font-size: 0.875rem;
-    }
-
-    .badge.bg-success {
-        background-color: var(--success) !important;
-    }
-
-    .order-items {
-        max-width: 300px;
-    }
-
-    .item-count {
-        font-weight: 600;
-        color: var(--gray-700);
-        display: block;
-        margin-bottom: 0.25rem;
-    }
-
-    .item-details {
-        font-size: 0.85rem;
-        color: var(--gray-500);
-        line-height: 1.4;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .table-footer {
-        padding: 1rem 1.5rem;
-        background: var(--gray-50);
-        border-top: 1px solid var(--gray-200);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .total-payments {
-        font-weight: 600;
-        color: var(--gray-700);
-    }
-
-    .export-btn {
-        padding: 0.75rem 1.5rem;
-        background: var(--primary);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        transition: all 0.3s ease;
-        text-decoration: none;
-    }
-
-    .export-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
-        color: white;
-    }
-
-    .btn-outline-primary {
-        color: var(--primary);
-        border: 1px solid var(--primary);
-        background: transparent;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
-        transition: all 0.3s ease;
-        text-decoration: none;
-    }
-
-    .btn-outline-primary:hover {
-        background: var(--primary);
-        color: white;
-    }
-
-    @media (max-width: 768px) {
-        .date-inputs {
-            flex-direction: column;
-        }
-        
-        .date-input {
-            width: 100%;
-        }
-        
-        .orders-table {
-            display: block;
-            overflow-x: auto;
-        }
-    }
-</style>';
+// Include external CSS file
+$extra_css = '<link rel="stylesheet" href="css/payment_details.css">';
 
 // Add custom JavaScript
 $extra_js = '

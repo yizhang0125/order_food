@@ -80,6 +80,58 @@ class Order extends Model {
         return $stmt->execute();
     }
     
+    public function cancelOrderItem($orderItemId) {
+        try {
+            // First, get the order item details to calculate the refund amount
+            $query = "SELECT oi.*, o.id as order_id, o.total_amount 
+                     FROM order_items oi 
+                     JOIN orders o ON oi.order_id = o.id 
+                     WHERE oi.id = ?";
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute([$orderItemId]);
+            $orderItem = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$orderItem) {
+                return false;
+            }
+            
+            // Calculate the refund amount
+            $refundAmount = $orderItem['price'] * $orderItem['quantity'];
+            $newTotal = $orderItem['total_amount'] - $refundAmount;
+            
+            // Delete the order item
+            $deleteQuery = "DELETE FROM order_items WHERE id = ?";
+            $deleteStmt = $this->conn->prepare($deleteQuery);
+            $deleteResult = $deleteStmt->execute([$orderItemId]);
+            
+            if (!$deleteResult) {
+                return false;
+            }
+            
+            // Update the order total
+            $updateQuery = "UPDATE orders SET total_amount = ? WHERE id = ?";
+            $updateStmt = $this->conn->prepare($updateQuery);
+            $updateResult = $updateStmt->execute([$newTotal, $orderItem['order_id']]);
+            
+            // Check if there are any remaining items in the order
+            $checkQuery = "SELECT COUNT(*) as item_count FROM order_items WHERE order_id = ?";
+            $checkStmt = $this->conn->prepare($checkQuery);
+            $checkStmt->execute([$orderItem['order_id']]);
+            $result = $checkStmt->fetch(PDO::FETCH_ASSOC);
+            
+            // If no items left, cancel the entire order
+            if ($result['item_count'] == 0) {
+                $this->updateStatus($orderItem['order_id'], 'cancelled');
+            }
+            
+            return $updateResult;
+            
+        } catch (Exception $e) {
+            error_log("Error cancelling order item: " . $e->getMessage());
+            return false;
+        }
+    }
+    
     public function getRecentOrders($start_date = null, $end_date = null, $limit = 10) {
         try {
             $query = "SELECT o.*, t.table_number,
@@ -176,8 +228,10 @@ class Order extends Model {
                       COUNT(oi.id) as item_count,
                       GROUP_CONCAT(
                         JSON_OBJECT(
+                            'id', oi.id,
                             'name', mi.name,
                             'quantity', oi.quantity,
+                            'price', oi.price,
                             'instructions', COALESCE(oi.special_instructions, '')
                         )
                       ) as items_data
@@ -213,6 +267,7 @@ class Order extends Model {
             foreach ($orders as &$order) {
                 $items_data = explode('},{', trim($order['items_data'], '[]'));
                 $order['items'] = [];
+                $order['order_items'] = [];
                 $order['special_instructions'] = [];
                 
                 foreach ($items_data as $item_json) {
@@ -224,6 +279,12 @@ class Order extends Model {
                         $item = json_decode($item_json, true);
                         if ($item) {
                             $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
+                            $order['order_items'][] = [
+                                'id' => $item['id'],
+                                'name' => $item['name'],
+                                'quantity' => $item['quantity'],
+                                'price' => $item['price']
+                            ];
                             if (!empty($item['instructions'])) {
                                 $order['special_instructions'][] = [
                                     'item' => $item['name'],
@@ -249,6 +310,7 @@ class Order extends Model {
                       COUNT(oi.id) as item_count,
                       GROUP_CONCAT(
                         JSON_OBJECT(
+                            'id', oi.id,
                             'name', mi.name,
                             'quantity', oi.quantity,
                             'price', oi.price,
@@ -273,6 +335,7 @@ class Order extends Model {
             foreach ($orders as &$order) {
                 $items_data = explode('},{', trim($order['items_data'], '[]'));
                 $order['items'] = [];
+                $order['order_items'] = [];
                 $order['special_instructions'] = [];
                 
                 foreach ($items_data as $item_json) {
@@ -284,6 +347,12 @@ class Order extends Model {
                         $item = json_decode($item_json, true);
                         if ($item) {
                             $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
+                            $order['order_items'][] = [
+                                'id' => $item['id'],
+                                'name' => $item['name'],
+                                'quantity' => $item['quantity'],
+                                'price' => $item['price']
+                            ];
                             if (!empty($item['instructions'])) {
                                 $order['special_instructions'][] = [
                                     'item' => $item['name'],
@@ -558,8 +627,10 @@ class Order extends Model {
                         COUNT(oi.id) as item_count,
                         GROUP_CONCAT(
                             JSON_OBJECT(
+                                'id', oi.id,
                                 'name', mi.name,
                                 'quantity', oi.quantity,
+                                'price', oi.price,
                                 'instructions', COALESCE(oi.special_instructions, '')
                             )
                         ) as items_data
@@ -583,6 +654,7 @@ class Order extends Model {
             foreach ($orders as &$order) {
                 $items_data = explode('},{', trim($order['items_data'], '[]'));
                 $order['items'] = [];
+                $order['order_items'] = [];
                 $order['special_instructions'] = [];
                 
                 foreach ($items_data as $item_json) {
@@ -594,6 +666,12 @@ class Order extends Model {
                         $item = json_decode($item_json, true);
                         if ($item) {
                             $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
+                            $order['order_items'][] = [
+                                'id' => $item['id'],
+                                'name' => $item['name'],
+                                'quantity' => $item['quantity'],
+                                'price' => $item['price']
+                            ];
                             if (!empty($item['instructions'])) {
                                 $order['special_instructions'][] = [
                                     'item' => $item['name'],
@@ -624,8 +702,10 @@ class Order extends Model {
                         COUNT(oi.id) as item_count,
                         GROUP_CONCAT(
                             JSON_OBJECT(
+                                'id', oi.id,
                                 'name', mi.name,
                                 'quantity', oi.quantity,
+                                'price', oi.price,
                                 'instructions', COALESCE(oi.special_instructions, '')
                             )
                         ) as items_data
@@ -654,6 +734,7 @@ class Order extends Model {
             foreach ($orders as &$order) {
                 $items_data = explode('},{', trim($order['items_data'], '[]'));
                 $order['items'] = [];
+                $order['order_items'] = [];
                 $order['special_instructions'] = [];
                 
                 foreach ($items_data as $item_json) {
@@ -665,6 +746,12 @@ class Order extends Model {
                         $item = json_decode($item_json, true);
                         if ($item) {
                             $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
+                            $order['order_items'][] = [
+                                'id' => $item['id'],
+                                'name' => $item['name'],
+                                'quantity' => $item['quantity'],
+                                'price' => $item['price']
+                            ];
                             if (!empty($item['instructions'])) {
                                 $order['special_instructions'][] = [
                                     'item' => $item['name'],

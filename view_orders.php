@@ -2,10 +2,12 @@
 session_start();
 require_once(__DIR__ . '/config/Database.php');
 require_once(__DIR__ . '/classes/Order.php');
+require_once(__DIR__ . '/classes/SystemSettings.php');
 
 $database = new Database();
 $db = $database->getConnection();
 $orderModel = new Order($db);
+$systemSettings = new SystemSettings($db);
 
 // Get table number and token from URL
 $table_number = isset($_GET['table']) ? htmlspecialchars($_GET['table']) : null;
@@ -67,6 +69,12 @@ if ($table_number && $token) {
                     'items' => [],
                     'earliest_time' => null
                 ],
+                'processing' => [
+                    'total' => 0,
+                    'ids' => [],
+                    'items' => [],
+                    'earliest_time' => null
+                ],
                 'completed' => [
                     'total' => 0,
                     'ids' => [],
@@ -76,7 +84,7 @@ if ($table_number && $token) {
             ];
             
             foreach ($all_orders as $order) {
-                if ($order['status'] == 'pending' || $order['status'] == 'completed') {
+                if ($order['status'] == 'pending' || $order['status'] == 'processing' || $order['status'] == 'completed') {
                     $status = $order['status'];
                     
                     // Add to appropriate status group
@@ -89,18 +97,31 @@ if ($table_number && $token) {
                         $status_groups[$status]['earliest_time'] = $order['created_at'];
                     }
                     
-                    // Merge items
+                    // Merge items and combine same food items
                     $items = json_decode($order['items'], true);
                     if (is_array($items)) {
                         foreach ($items as $item) {
                             if (is_array($item)) {
-                                $status_groups[$status]['items'][] = $item;
+                                // Check if item already exists in the group
+                                $found = false;
+                                foreach ($status_groups[$status]['items'] as &$existing_item) {
+                                    if ($existing_item['name'] === $item['name'] && 
+                                        $existing_item['price'] == $item['price'] &&
+                                        $existing_item['instructions'] === $item['instructions']) {
+                                        // Combine quantities for same food
+                                        $existing_item['quantity'] += $item['quantity'];
+                                        $found = true;
+                                        break;
+                                    }
+                                }
+                                
+                                // If not found, add as new item
+                                if (!$found) {
+                                    $status_groups[$status]['items'][] = $item;
+                                }
                             }
                         }
                     }
-                } else {
-                    // Add processing orders directly (not grouped)
-                    $grouped_orders[] = $order;
                 }
             }
             
@@ -644,7 +665,7 @@ if ($table_number && $token) {
                                 <span class="item-quantity"><?php echo htmlspecialchars($item['quantity']); ?>×</span>
                                 <span class="item-name"><?php echo htmlspecialchars($item['name']); ?></span>
                             </div>
-                            <span class="item-price">RM <?php echo number_format($item['price'] * $item['quantity'], 2); ?></span>
+                            <span class="item-price"><?php echo $systemSettings->getCurrencySymbol(); ?> <?php echo number_format($item['price'] * $item['quantity'], 2); ?></span>
                         </div>
                         <?php if (!empty($item['instructions'])): ?>
                         <div class="special-instructions">
@@ -661,22 +682,25 @@ if ($table_number && $token) {
                 </div>
                 <div class="order-footer">
                     <?php
-                    // Calculate SST (assuming 6% tax rate)
-                    $sst_rate = 0.06;
-                    $subtotal = $order['total_amount'] / (1 + $sst_rate);
-                    $sst_amount = $order['total_amount'] - $subtotal;
+                    // Calculate tax using dynamic tax rate
+                    $tax_rate = $systemSettings->getTaxRate();
+                    $subtotal = $order['total_amount'] / (1 + $tax_rate);
+                    $tax_amount = $order['total_amount'] - $subtotal;
+                    $tax_name = $systemSettings->getTaxName();
+                    $tax_percent = $systemSettings->getTaxRatePercent();
+                    $currency_symbol = $systemSettings->getCurrencySymbol();
                     ?>
                     <div class="order-subtotal">
                         <span>Subtotal</span>
-                        <span>RM <?php echo number_format($subtotal, 2); ?></span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($subtotal, 2); ?></span>
                     </div>
                     <div class="order-sst">
-                        <span>SST (6%)</span>
-                        <span>RM <?php echo number_format($sst_amount, 2); ?></span>
+                        <span><?php echo $tax_name; ?> (<?php echo $tax_percent; ?>%)</span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($tax_amount, 2); ?></span>
                     </div>
                     <div class="order-total">
                         <span>Total</span>
-                        <span>RM <?php echo number_format($order['total_amount'], 2); ?></span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($order['total_amount'], 2); ?></span>
                     </div>
                     <div class="order-time">
                         Ordered: <?php echo date('d M Y, h:i A', strtotime($order['created_at'])); ?>

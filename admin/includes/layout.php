@@ -32,6 +32,10 @@
         padding: 1.5rem;
         min-height: calc(100vh - var(--navbar-height));
     }
+    
+    .main-content.no-sidebar {
+        margin-left: 0;
+    }
 
     @media (max-width: 991.98px) {
         .main-content {
@@ -128,10 +132,22 @@
     <?php include 'navbar.php'; ?>
 
     <!-- Include Sidebar -->
-    <?php include 'sidebar.php'; ?>
+    <?php 
+    // Check if user has permissions before including sidebar
+    $has_permissions = false;
+    if ($_SESSION['user_type'] === 'admin') {
+        $has_permissions = true;
+    } else if (isset($_SESSION['staff_permissions']) && is_array($_SESSION['staff_permissions'])) {
+        $has_permissions = !empty($_SESSION['staff_permissions']);
+    }
+    
+    if ($has_permissions) {
+        include 'sidebar.php';
+    }
+    ?>
 
     <!-- Main Content -->
-    <main class="main-content">
+    <main class="main-content <?php echo !$has_permissions ? 'no-sidebar' : ''; ?>">
         <?php if (isset($content)) echo $content; ?>
     </main>
 
@@ -145,12 +161,12 @@
         // Hide loading spinner when page is loaded
         document.getElementById('loadingSpinner').style.display = 'none';
 
-        // Handle sidebar toggle
+        // Handle sidebar toggle (only if sidebar exists)
         const sidebar = document.getElementById('sidebar');
         const sidebarToggle = document.getElementById('sidebarToggle');
         const mainContent = document.querySelector('.main-content');
 
-        if (sidebarToggle) {
+        if (sidebar && sidebarToggle) {
             sidebarToggle.addEventListener('click', function() {
                 sidebar.classList.toggle('show');
                 if (window.innerWidth > 991.98) {
@@ -159,24 +175,26 @@
             });
         }
 
-        // Close sidebar when clicking outside on mobile
-        document.addEventListener('click', function(e) {
-            if (window.innerWidth < 992) {
-                if (!sidebar.contains(e.target) && !sidebarToggle.contains(e.target)) {
-                    sidebar.classList.remove('show');
+        // Close sidebar when clicking outside on mobile (only if sidebar exists)
+        if (sidebar) {
+            document.addEventListener('click', function(e) {
+                if (window.innerWidth < 992) {
+                    if (!sidebar.contains(e.target) && sidebarToggle && !sidebarToggle.contains(e.target)) {
+                        sidebar.classList.remove('show');
+                    }
                 }
-            }
-        });
+            });
 
-        // Handle window resize
-        window.addEventListener('resize', function() {
-            if (window.innerWidth >= 992) {
-                sidebar.classList.remove('show');
-                mainContent.style.marginLeft = 'var(--sidebar-width)';
-            } else {
-                mainContent.style.marginLeft = '0';
-            }
-        });
+            // Handle window resize (only if sidebar exists)
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 992) {
+                    sidebar.classList.remove('show');
+                    mainContent.style.marginLeft = 'var(--sidebar-width)';
+                } else {
+                    mainContent.style.marginLeft = '0';
+                }
+            });
+        }
     });
 
     // Show loading spinner when navigating

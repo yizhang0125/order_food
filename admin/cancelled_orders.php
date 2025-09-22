@@ -15,6 +15,15 @@ if (!$auth->isLoggedIn()) {
     exit();
 }
 
+// Check if user has permission to view cancelled orders
+if ($_SESSION['user_type'] !== 'admin' && 
+    (!isset($_SESSION['staff_permissions']) || 
+    (!in_array('view_orders', $_SESSION['staff_permissions']) && 
+     !in_array('all', $_SESSION['staff_permissions'])))) {
+    header('Location: dashboard.php?message=' . urlencode('You do not have permission to access Cancelled Orders') . '&type=warning');
+    exit();
+}
+
 // Get date range from query parameters or default to last 30 days
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-30 days'));

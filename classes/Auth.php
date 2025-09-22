@@ -43,23 +43,64 @@ class Auth {
     
     public function login($username, $password) {
         try {
-            $query = "SELECT * FROM " . $this->table_name . " WHERE username = :username";
-            $stmt = $this->conn->prepare($query);
+            // First try admin login
+            $admin_query = "SELECT * FROM admins WHERE username = :username OR email = :email";
+            $stmt = $this->conn->prepare($admin_query);
+            $stmt->bindParam(":username", $username);
+            $stmt->bindParam(":email", $username);
+            $stmt->execute();
+            $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($admin && password_verify($password, $admin['password'])) {
+                $_SESSION['admin'] = true;
+                $_SESSION['admin_id'] = $admin['id'];
+                $_SESSION['admin_username'] = $admin['username'];
+                $_SESSION['user_type'] = 'admin';
+                return true;
+            }
+            
+            // If not admin, try staff login
+            $staff_query = "SELECT s.*, GROUP_CONCAT(p.name) as permissions 
+                          FROM staff s 
+                          LEFT JOIN staff_permissions sp ON s.id = sp.staff_id 
+                          LEFT JOIN permissions p ON sp.permission_id = p.id 
+                          WHERE s.email = :username OR s.employee_number = :username
+                          GROUP BY s.id";
+            $stmt = $this->conn->prepare($staff_query);
             $stmt->bindParam(":username", $username);
             $stmt->execute();
-            
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            $staff = $stmt->fetch(PDO::FETCH_ASSOC);
             
             // For debugging
-            if ($user) {
-                // Verify password
-                if (password_verify($password, $user['password'])) {
-                    $_SESSION['admin'] = true;
-                    $_SESSION['admin_id'] = $user['id'];
-                    $_SESSION['admin_username'] = $user['username'];
-                    return true;
+            error_log("Staff login attempt - Username: " . $username);
+            if ($staff) {
+                error_log("Staff found: " . print_r($staff, true));
+            } else {
+                error_log("No staff found with email/employee number: " . $username);
+            }
+            
+            if ($staff) {
+                error_log("Verifying password for staff");
+                if (password_verify($password, $staff['password'])) {
+                    error_log("Password verified successfully");
+                    if ($staff['is_active']) {
+                        $_SESSION['staff_id'] = $staff['id'];
+                        $_SESSION['staff_name'] = $staff['name'];
+                        $_SESSION['staff_position'] = $staff['position'];
+                        $_SESSION['staff_permissions'] = $staff['permissions'] ? explode(',', $staff['permissions']) : [];
+                        $_SESSION['user_type'] = 'staff';
+                        error_log("Staff logged in successfully: " . $staff['name']);
+                        return true;
+                    } else {
+                        error_log("Staff account inactive: " . $staff['name']);
+                        throw new Exception("Account is inactive. Please contact administrator.");
+                    }
+                } else {
+                    error_log("Invalid password for staff: " . $staff['name']);
                 }
             }
+            
+            error_log("Login failed for username: " . $username);
             return false;
         } catch(PDOException $e) {
             // For debugging
@@ -69,13 +110,25 @@ class Auth {
     }
     
     public function isLoggedIn() {
-        return isset($_SESSION['admin']) && $_SESSION['admin'] === true;
+        return (isset($_SESSION['admin']) && $_SESSION['admin'] === true) || 
+               (isset($_SESSION['staff_id']) && !empty($_SESSION['staff_id']));
     }
     
     public function logout() {
+        // Clear admin session
         unset($_SESSION['admin']);
         unset($_SESSION['admin_id']);
         unset($_SESSION['admin_username']);
+        
+        // Clear staff session
+        unset($_SESSION['staff_id']);
+        unset($_SESSION['staff_name']);
+        unset($_SESSION['staff_position']);
+        unset($_SESSION['staff_permissions']);
+        unset($_SESSION['staff_email']);
+        unset($_SESSION['staff_employee_number']);
+        unset($_SESSION['user_type']);
+        
         session_destroy();
     }
     

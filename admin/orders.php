@@ -15,10 +15,17 @@ if (!$auth->isLoggedIn()) {
     exit();
 }
 
-// Get current page and search parameters
-$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+// Check if user has permission to view orders
+if ($_SESSION['user_type'] !== 'admin' && 
+    (!isset($_SESSION['staff_permissions']) || 
+    (!in_array('view_orders', $_SESSION['staff_permissions']) && 
+     !in_array('all', $_SESSION['staff_permissions'])))) {
+    header('Location: dashboard.php?message=' . urlencode('You do not have permission to access Orders') . '&type=warning');
+    exit();
+}
+
+// Get search parameters
 $search = isset($_GET['search']) ? $_GET['search'] : '';
-$per_page = 10;
 
 // Update order status if requested
 if (isset($_POST['update_status'])) {
@@ -32,24 +39,10 @@ if (isset($_POST['update_status'])) {
 }
 
 try {
-    // Update the SQL query to include payment status check
-    $sql = "SELECT o.id, o.table_id, t.table_number, o.total_amount, o.status, o.created_at,
-            COUNT(oi.id) as item_count,
-            GROUP_CONCAT(CONCAT(m.name, ' (', oi.quantity, ')') SEPARATOR ', ') as items_list
-            FROM orders o
-            LEFT JOIN tables t ON o.table_id = t.id
-            LEFT JOIN order_items oi ON o.id = oi.order_id
-            LEFT JOIN menu_items m ON oi.menu_item_id = m.id
-            WHERE o.status != 'completed' AND o.status != 'cancelled'
-            GROUP BY o.id, o.table_id, t.table_number, o.total_amount, o.status, o.created_at
-            ORDER BY o.created_at DESC";
-    $orders = $orderModel->getOrders($page, $per_page, $search);
-    $total_orders = $orderModel->getTotalOrders();
-    $total_pages = ceil($total_orders / $per_page);
+    $orders = $orderModel->getOrders(1, 1000, $search); // Get all orders (limit 1000 to prevent memory issues)
 } catch (Exception $e) {
     $error_message = $e->getMessage();
     $orders = [];
-    $total_pages = 0;
 }
 
 $page_title = "Orders";
@@ -201,31 +194,6 @@ ob_start();
             </table>
         </div>
 
-        <?php if ($total_pages > 1): ?>
-        <div class="pagination-container">
-            <nav>
-                <ul class="pagination justify-content-center">
-                    <li class="page-item <?php echo $page <= 1 ? 'disabled' : ''; ?>">
-                        <a class="page-link" href="?page=<?php echo $page - 1; ?>&search=<?php echo urlencode($search); ?>">
-                            Previous
-                        </a>
-                    </li>
-                    <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                    <li class="page-item <?php echo $page == $i ? 'active' : ''; ?>">
-                        <a class="page-link" href="?page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>">
-                            <?php echo $i; ?>
-                        </a>
-                    </li>
-                    <?php endfor; ?>
-                    <li class="page-item <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
-                        <a class="page-link" href="?page=<?php echo $page + 1; ?>&search=<?php echo urlencode($search); ?>">
-                            Next
-                        </a>
-                    </li>
-                </ul>
-            </nav>
-        </div>
-        <?php endif; ?>
     </div>
 </div>
 
@@ -388,32 +356,6 @@ ob_start();
     text-overflow: ellipsis;
 }
 
-.pagination-container {
-    padding: 1rem;
-    border-top: 1px solid var(--gray-200);
-}
-
-.pagination {
-    margin: 0;
-}
-
-.page-link {
-    color: var(--gray-600);
-    border: 1px solid var(--gray-200);
-    padding: 0.5rem 1rem;
-    transition: all 0.3s ease;
-}
-
-.page-link:hover {
-    background: var(--gray-50);
-    color: var(--primary);
-    border-color: var(--gray-300);
-}
-
-.page-item.active .page-link {
-    background: var(--primary);
-    border-color: var(--primary);
-}
 
 .btn-outline-primary {
     color: var(--primary);
