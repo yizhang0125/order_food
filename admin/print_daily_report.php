@@ -255,3 +255,5 @@ if (isset($_GET['print']) && $_GET['print'] == '1') {
 header('Location: daily_sales_report.php?date=' . $report_date);
 exit();
 ?>
+
+

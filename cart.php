@@ -4,12 +4,24 @@ require_once(__DIR__ . '/config/Database.php');
 require_once(__DIR__ . '/classes/MenuItem.php');
 require_once(__DIR__ . '/classes/Order.php');
 require_once(__DIR__ . '/classes/Cart.php');
+require_once(__DIR__ . '/classes/SystemSettings.php');
 
 $database = new Database();
 $db = $database->getConnection();
 $menuItemModel = new MenuItem($db);
 $orderModel = new Order($db);
 $cart = new Cart();
+$systemSettings = new SystemSettings($db);
+$restaurant_name = $systemSettings->getRestaurantName();
+
+// Cash rounding function - rounds to nearest 0.05 (5 cents)
+if (!function_exists('customRound')) {
+    function customRound($amount) {
+        // Round to nearest 0.05 (5 cents) for cash transactions
+        // Multiply by 20, round to nearest integer, then divide by 20
+        return round($amount * 20) / 20;
+    }
+}
 
 // Process checkout
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['checkout'])) {
@@ -44,12 +56,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['checkout'])) {
             throw new Exception('Invalid or expired QR code');
         }
         
-        // Calculate total amount including tax using Cart class
+        // Calculate total amount including tax and service tax using Cart class
         $subtotal = array_reduce($cart_items, function($carry, $item) {
             return $carry + ($item['price'] * $item['quantity']);
         }, 0);
         $tax_rate = $cart->getTaxRatePercent() / 100; // Get dynamic tax rate from Cart class
-        $total_amount = $subtotal + ($subtotal * $tax_rate);
+        $service_tax_rate = $cart->getServiceTaxRatePercent() / 100; // Get dynamic service tax rate from Cart class
+        $tax_amount = $subtotal * $tax_rate;
+        $service_tax_amount = $subtotal * $service_tax_rate;
+        $total_amount = $subtotal + $tax_amount + $service_tax_amount;
+        
+        // Apply cash rounding to the final total
+        $total_amount = customRound($total_amount);
         
         // Start transaction
         $db->beginTransaction();
@@ -149,7 +167,7 @@ if ($table_number && $token) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shopping Cart - Gourmet Delights</title>
+    <title>Shopping Cart - <?php echo htmlspecialchars($restaurant_name); ?></title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -158,26 +176,7 @@ if ($table_number && $token) {
     
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-light fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="index.php<?php echo ($table_number && $token) ? '?table=' . $table_number . '&token=' . $token : ''; ?>">
-                <i class="fas fa-utensils"></i>
-                Gourmet Delights
-            </a>
-            <div class="d-flex align-items-center gap-3">
-                <?php if ($table_number && $token): ?>
-                <div class="table-info-banner">
-                    <span class="table-number">Table <?php echo $table_number; ?></span>
-                </div>
-                <a href="view_orders.php?table=<?php echo $table_number; ?>&token=<?php echo $token; ?>" class="view-orders-btn">
-                    <i class="fas fa-list-ul"></i>
-                    View Orders
-                </a>
-                <?php endif; ?>
-            </div>
-        </div>
-    </nav>
+    <?php include 'includes/navbar.php'; ?>
 
     <!-- Cart Content -->
     <div class="container">
@@ -206,6 +205,10 @@ if ($table_number && $token) {
                     <div class="summary-item">
                         <span id="tax-label"><?php echo $cart->getTaxName(); ?> (<?php echo $cart->getTaxRatePercent(); ?>%)</span>
                         <span id="tax"><?php echo $cart->getCurrencySymbol(); ?> 0.00</span>
+                    </div>
+                    <div class="summary-item">
+                        <span id="service-tax-label"><?php echo $cart->getServiceTaxName(); ?> (<?php echo $cart->getServiceTaxRatePercent(); ?>%)</span>
+                        <span id="service-tax"><?php echo $cart->getCurrencySymbol(); ?> 0.00</span>
                     </div>
                     <div class="summary-total">
                         <span>Total</span>
@@ -303,14 +306,20 @@ if ($table_number && $token) {
             
             // Use Cart class tax settings (from PHP)
             const taxRate = <?php echo $cart->getTaxRatePercent() / 100; ?>; // Get dynamic tax rate from Cart class
+            const serviceTaxRate = <?php echo $cart->getServiceTaxRatePercent() / 100; ?>; // Get dynamic service tax rate from Cart class
             const tax = subtotal * taxRate;
-            const total = subtotal + tax;
+            const serviceTax = subtotal * serviceTaxRate;
+            const total = subtotal + tax + serviceTax;
+            
+            // Apply cash rounding to the total (nearest 0.05)
+            const cashRoundedTotal = Math.round(total * 20) / 20;
             
             const currencySymbol = '<?php echo $cart->getCurrencySymbol(); ?>';
             
             document.getElementById('subtotal').textContent = `${currencySymbol} ${subtotal.toFixed(2)}`;
             document.getElementById('tax').textContent = `${currencySymbol} ${tax.toFixed(2)}`;
-            document.getElementById('total').textContent = `${currencySymbol} ${total.toFixed(2)}`;
+            document.getElementById('service-tax').textContent = `${currencySymbol} ${serviceTax.toFixed(2)}`;
+            document.getElementById('total').textContent = `${currencySymbol} ${cashRoundedTotal.toFixed(2)}`;
         }
         
         window.updateQuantity = function(itemId, change) {

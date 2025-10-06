@@ -193,3 +193,11 @@ VALUES
 ('WELCOME10', 'Welcome Discount', 'percentage', 10.00, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 1 YEAR), 'System'),
 ('STUDENT5', 'Student Discount', 'percentage', 5.00, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 1 YEAR), 'System'),
 ('SENIOR15', 'Senior Citizen Discount', 'percentage', 15.00, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 1 YEAR), 'System');
+
+
+
+
+
+
+
+

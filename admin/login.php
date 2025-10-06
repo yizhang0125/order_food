@@ -107,6 +107,68 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <title>Admin Login</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="css/login.css" rel="stylesheet">
+</head>
+<body>
+    <div class="background-animation">
+        <div class="wave"></div>
+        <div class="wave"></div>
+        <div class="wave"></div>
+    </div>
+
+        <div class="login-container">
+        <div class="header-section">
+            <div class="brand-logo">
+                <i class="fas fa-utensils"></i>
+            </div>
+            <h1 class="header-title">FoodAdmin</h1>
+            <p class="header-text">Welcome to Restaurant Management System. Streamline your restaurant operations with our comprehensive admin dashboard. Manage orders, track inventory, and boost your business efficiency.</p>
+        </div>
+
+        <div class="login-form">
+            <div class="form-header">
+                <h2>Welcome Back!</h2>
+                <p>Sign in to your account</p>
+            </div>
+            
+            <?php if($error): ?>
+                <div class="alert">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span><?php echo htmlspecialchars($error); ?></span>
+                </div>
+                    <?php endif; ?>
+                    
+                    <form method="POST" class="needs-validation" novalidate>
+                <div class="form-group">
+                    <label class="form-label" for="username">Username or Employee Number</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="username" name="username" 
+                               placeholder="Enter username (admin) or employee number (staff)" required 
+                               value="<?php echo isset($_POST['username']) ? htmlspecialchars($_POST['username']) : ''; ?>">
+                        <i class="fas fa-user"></i>
+                    </div>
+                        </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="password" name="password" 
+                               placeholder="Enter your password" required>
+                        <i class="fas fa-lock"></i>
+                        </div>
+                </div>
+
+                <button type="submit" class="btn-login">
+                    <i class="fas fa-sign-in-alt me-2"></i>Sign In
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/login.js"></script>
+</body>
+</html>
     <style>
         :root {
             --primary: #4f46e5;

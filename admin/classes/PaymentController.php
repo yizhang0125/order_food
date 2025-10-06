@@ -12,61 +12,39 @@ class PaymentController {
     }
     
     /**
-     * Custom rounding function for payment counter
+     * Cash rounding function - rounds to nearest 0.05 (5 cents)
      */
     public function customRound($amount) {
-        // Get the decimal part (last 2 digits)
-        $decimal_part = fmod($amount * 100, 100);
-        
-        // Get the second decimal digit (last digit)
-        $second_decimal = $decimal_part % 10;
-        
-        // Handle rounding rules based on second decimal digit
-        if ($second_decimal >= 1 && $second_decimal <= 2) {
-            // Round to .X0 (e.g., 8.41, 8.42 -> 8.40)
-            $result = floor($amount * 10) / 10;
-            return $result;
-        } elseif ($second_decimal >= 3 && $second_decimal <= 4) {
-            // Round to .X5 (e.g., 8.43, 8.44 -> 8.45)
-            $result = floor($amount * 10) / 10 + 0.05;
-            return $result;
-        } elseif ($second_decimal >= 6 && $second_decimal <= 7) {
-            // Round to .X5 (e.g., 8.46, 8.47 -> 8.45)
-            $result = floor($amount * 10) / 10 + 0.05;
-            return $result;
-        } elseif ($second_decimal >= 8 && $second_decimal <= 9) {
-            // Round to .X0 (next whole number) (e.g., 8.48, 8.49 -> 8.50)
-            $result = floor($amount * 10) / 10 + 0.10;
-            return $result;
-        } else {
-            // For 0 and 5, keep as is
-            $result = round($amount, 2);
-            return $result;
-        }
+        // Round to nearest 0.05 (5 cents) for cash transactions
+        // Multiply by 20, round to nearest integer, then divide by 20
+        return round($amount * 20) / 20;
     }
     
     /**
      * Process TNG Pay payment for multiple orders
      */
-    public function processTNGPayment($order_ids, $total_amount, $cashier_name, $tng_reference = null) {
+    public function processTNGPayment($order_ids, $total_amount, $cashier_name, $tng_reference = null, $discount_amount = 0, $discount_type = null, $discount_reason = null) {
         try {
             $this->db->beginTransaction();
             
             $payment_id = null;
+            $table_number = null;
             
             // Process each order
             foreach ($order_ids as $order_id) {
-                // Get individual order amount
-                $order_amount_sql = "SELECT total_amount FROM orders WHERE id = ?";
+                // Get individual order amount and table number
+                $order_amount_sql = "SELECT o.total_amount, t.table_number FROM orders o LEFT JOIN tables t ON o.table_id = t.id WHERE o.id = ?";
                 $order_amount_stmt = $this->db->prepare($order_amount_sql);
                 $order_amount_stmt->execute([$order_id]);
-                $order_amount = $order_amount_stmt->fetchColumn();
+                $order_data = $order_amount_stmt->fetch(PDO::FETCH_ASSOC);
+                $order_amount = $order_data['total_amount'];
+                $table_number = $order_data['table_number'];
                 
                 // Insert into payments table with TNG Pay details
-                $payment_sql = "INSERT INTO payments (order_id, amount, payment_status, payment_date, payment_method, tng_reference, processed_by_name) 
-                               VALUES (?, ?, 'completed', CURRENT_TIMESTAMP, 'tng_pay', ?, ?)";
+                $payment_sql = "INSERT INTO payments (order_id, amount, payment_status, payment_date, payment_method, tng_reference, processed_by_name, discount_amount, discount_type, discount_reason) 
+                               VALUES (?, ?, 'completed', CURRENT_TIMESTAMP, 'tng_pay', ?, ?, ?, ?, ?)";
                 $payment_stmt = $this->db->prepare($payment_sql);
-                $payment_success = $payment_stmt->execute([$order_id, $order_amount, $tng_reference, $cashier_name]);
+                $payment_success = $payment_stmt->execute([$order_id, $order_amount, $tng_reference, $cashier_name, $discount_amount, $discount_type, $discount_reason]);
                 
                 // Get payment details for receipt
                 if (!$payment_id) {
@@ -87,6 +65,10 @@ class PaymentController {
             }
             
             $this->db->commit();
+            
+            // Trigger payment completion notification
+            $this->triggerPaymentNotification($payment_id, 'tng_pay', $total_amount, $table_number, $cashier_name, $discount_amount, $discount_type, null, null, $tng_reference);
+            
             return $payment_id;
             
         } catch (Exception $e) {
@@ -98,26 +80,29 @@ class PaymentController {
     /**
      * Process cash payment for multiple orders
      */
-    public function processPayment($order_ids, $total_amount, $cash_received, $cashier_name) {
+    public function processPayment($order_ids, $total_amount, $cash_received, $cashier_name, $discount_amount = 0, $discount_type = null, $discount_reason = null) {
         try {
             $this->db->beginTransaction();
             
             $change = $cash_received - $total_amount;
             $payment_id = null;
+            $table_number = null;
             
             // Process each order
             foreach ($order_ids as $order_id) {
-                // Get individual order amount
-                $order_amount_sql = "SELECT total_amount FROM orders WHERE id = ?";
+                // Get individual order amount and table number
+                $order_amount_sql = "SELECT o.total_amount, t.table_number FROM orders o LEFT JOIN tables t ON o.table_id = t.id WHERE o.id = ?";
                 $order_amount_stmt = $this->db->prepare($order_amount_sql);
                 $order_amount_stmt->execute([$order_id]);
-                $order_amount = $order_amount_stmt->fetchColumn();
+                $order_data = $order_amount_stmt->fetch(PDO::FETCH_ASSOC);
+                $order_amount = $order_data['total_amount'];
+                $table_number = $order_data['table_number'];
                 
                 // Insert into payments table with individual order amount
-                $payment_sql = "INSERT INTO payments (order_id, amount, payment_status, payment_date, payment_method, cash_received, change_amount, processed_by_name) 
-                               VALUES (?, ?, 'completed', CURRENT_TIMESTAMP, 'cash', ?, ?, ?)";
+                $payment_sql = "INSERT INTO payments (order_id, amount, payment_status, payment_date, payment_method, cash_received, change_amount, processed_by_name, discount_amount, discount_type, discount_reason) 
+                               VALUES (?, ?, 'completed', CURRENT_TIMESTAMP, 'cash', ?, ?, ?, ?, ?, ?)";
                 $payment_stmt = $this->db->prepare($payment_sql);
-                $payment_success = $payment_stmt->execute([$order_id, $order_amount, $cash_received, $change, $cashier_name]);
+                $payment_success = $payment_stmt->execute([$order_id, $order_amount, $cash_received, $change, $cashier_name, $discount_amount, $discount_type, $discount_reason]);
                 
                 // Get payment details for receipt
                 if (!$payment_id) {
@@ -138,6 +123,10 @@ class PaymentController {
             }
             
             $this->db->commit();
+            
+            // Trigger payment completion notification
+            $this->triggerPaymentNotification($payment_id, 'cash', $total_amount, $table_number, $cashier_name, $discount_amount, $discount_type, $cash_received, $change, null);
+            
             return $payment_id;
             
         } catch (Exception $e) {
@@ -263,6 +252,98 @@ class PaymentController {
             
         } catch (Exception $e) {
             error_log("Error in PaymentController::getOrdersWaitingForPayment: " . $e->getMessage());
+            return [];
+        }
+    }
+    
+    /**
+     * Get all tables with their status and orders
+     */
+    public function getAllTablesWithStatus() {
+        try {
+            // Get all active tables
+            $tables_query = "SELECT t.id, t.table_number, t.status as table_status 
+                            FROM tables t 
+                            WHERE t.status = 'active' 
+                            ORDER BY t.table_number ASC";
+            $tables_stmt = $this->db->prepare($tables_query);
+            $tables_stmt->execute();
+            $all_tables = $tables_stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            $tables_with_status = [];
+            
+            foreach ($all_tables as $table) {
+                $table_number = $table['table_number'];
+                $table_id = $table['id'];
+                
+                // Get current orders for this table
+                $orders_query = "SELECT o.*, 
+                                (SELECT JSON_ARRAYAGG(
+                                    JSON_OBJECT(
+                                        'id', oi.id,
+                                        'name', m.name,
+                                        'price', m.price,
+                                        'quantity', oi.quantity,
+                                        'instructions', oi.special_instructions
+                                    )
+                                ) 
+                                FROM order_items oi 
+                                JOIN menu_items m ON oi.menu_item_id = m.id 
+                                WHERE oi.order_id = o.id) as items
+                                FROM orders o
+                                WHERE o.table_id = ? 
+                                AND o.status IN ('pending', 'processing', 'completed')
+                                ORDER BY o.created_at DESC";
+                
+                $orders_stmt = $this->db->prepare($orders_query);
+                $orders_stmt->execute([$table_id]);
+                $orders = $orders_stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Determine table status
+                $table_status = 'empty';
+                $pending_orders = [];
+                $completed_orders = [];
+                $total_amount = 0;
+                
+                foreach ($orders as $order) {
+                    if ($order['status'] === 'completed') {
+                        // Check if payment is pending
+                        $payment_check = "SELECT COUNT(*) as payment_count FROM payments WHERE order_id = ? AND payment_status = 'completed'";
+                        $payment_stmt = $this->db->prepare($payment_check);
+                        $payment_stmt->execute([$order['id']]);
+                        $has_payment = $payment_stmt->fetchColumn() > 0;
+                        
+                        if (!$has_payment) {
+                            $completed_orders[] = $order;
+                            $total_amount += $order['total_amount'];
+                        }
+                    } elseif (in_array($order['status'], ['pending', 'processing'])) {
+                        $pending_orders[] = $order;
+                    }
+                }
+                
+                // Determine final status
+                if (!empty($completed_orders)) {
+                    $table_status = 'payment_pending';
+                } elseif (!empty($pending_orders)) {
+                    $table_status = 'occupied';
+                }
+                
+                $tables_with_status[$table_number] = [
+                    'table_id' => $table_id,
+                    'table_number' => $table_number,
+                    'status' => $table_status,
+                    'pending_orders' => $pending_orders,
+                    'completed_orders' => $completed_orders,
+                    'total_amount' => $total_amount,
+                    'last_order_time' => !empty($orders) ? $orders[0]['created_at'] : null
+                ];
+            }
+            
+            return $tables_with_status;
+            
+        } catch (Exception $e) {
+            error_log("Error in PaymentController::getAllTablesWithStatus: " . $e->getMessage());
             return [];
         }
     }
@@ -425,14 +506,14 @@ class PaymentController {
     /**
      * Process payment and automatically trigger receipt printing
      */
-    public function processPaymentWithAutoPrint($order_ids, $total_amount, $payment_method, $cashier_name, $cash_received = null, $tng_reference = null) {
+    public function processPaymentWithAutoPrint($order_ids, $total_amount, $payment_method, $cashier_name, $cash_received = null, $tng_reference = null, $discount_amount = 0, $discount_type = null, $discount_reason = null) {
         try {
             $payment_id = null;
             
             if ($payment_method === 'tng_pay') {
-                $payment_id = $this->processTNGPayment($order_ids, $total_amount, $cashier_name, $tng_reference);
+                $payment_id = $this->processTNGPayment($order_ids, $total_amount, $cashier_name, $tng_reference, $discount_amount, $discount_type, $discount_reason);
             } else {
-                $payment_id = $this->processPayment($order_ids, $total_amount, $cash_received, $cashier_name);
+                $payment_id = $this->processPayment($order_ids, $total_amount, $cash_received, $cashier_name, $discount_amount, $discount_type, $discount_reason);
             }
             
             // Automatically trigger receipt printing
@@ -463,6 +544,40 @@ class PaymentController {
             
         } catch (Exception $e) {
             error_log("Error in PaymentController::autoPrintReceipt: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Trigger payment completion notification
+     */
+    private function triggerPaymentNotification($payment_id, $payment_method, $amount, $table_number, $cashier_name, $discount_amount = 0, $discount_type = null, $cash_received = null, $change_amount = null, $tng_reference = null) {
+        try {
+            if (session_status() == PHP_SESSION_NONE) {
+                session_start();
+            }
+            
+            // Store payment notification data in session
+            $_SESSION['payment_notification'] = [
+                'payment_id' => $payment_id,
+                'type' => 'payment_completed',
+                'amount' => $amount,
+                'payment_method' => $payment_method,
+                'table_number' => $table_number,
+                'processed_by_name' => $cashier_name,
+                'discount_amount' => $discount_amount,
+                'discount_type' => $discount_type,
+                'cash_received' => $cash_received,
+                'change_amount' => $change_amount,
+                'tng_reference' => $tng_reference,
+                'created_at' => date('Y-m-d H:i:s'),
+                'timestamp' => time()
+            ];
+            
+            // Log the notification trigger
+            error_log("Payment notification triggered for payment ID: " . $payment_id . " - Table: " . $table_number . " - Amount: " . $amount);
+            
+        } catch (Exception $e) {
+            error_log("Error in PaymentController::triggerPaymentNotification: " . $e->getMessage());
         }
     }
     
@@ -498,6 +613,234 @@ class PaymentController {
             error_log("Error in PaymentController::getPendingAutoPrint: " . $e->getMessage());
             return null;
         }
+    }
+    
+    /**
+     * Get pending payment notification
+     */
+    public function getPendingPaymentNotification() {
+        try {
+            if (session_status() == PHP_SESSION_NONE) {
+                session_start();
+            }
+            
+            if (isset($_SESSION['payment_notification']) && isset($_SESSION['payment_notification']['timestamp'])) {
+                // Check if the notification is not too old (within 60 seconds)
+                if ((time() - $_SESSION['payment_notification']['timestamp']) < 60) {
+                    $notification = $_SESSION['payment_notification'];
+                    
+                    // Clear the session data after retrieving
+                    unset($_SESSION['payment_notification']);
+                    
+                    return $notification;
+                } else {
+                    // Clear old notification data
+                    unset($_SESSION['payment_notification']);
+                }
+            }
+            
+            return null;
+            
+        } catch (Exception $e) {
+            error_log("Error in PaymentController::getPendingPaymentNotification: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Check user permissions for payment counter access
+     */
+    public function checkPaymentCounterPermissions() {
+        require_once(__DIR__ . '/../../classes/Auth.php');
+        $auth = new Auth($this->db);
+        
+        if (!$auth->isLoggedIn()) {
+            header('Location: login.php');
+            exit();
+        }
+
+        // Permission gate: allow admin or staff with manage_payments/all
+        if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
+            $staffPerms = isset($_SESSION['staff_permissions']) && is_array($_SESSION['staff_permissions'])
+                ? $_SESSION['staff_permissions']
+                : [];
+            if (!(in_array('manage_payments', $staffPerms) || in_array('all', $staffPerms))) {
+                header('Location: dashboard.php?message=' . urlencode('You do not have permission to access Payment Counter') . '&type=warning');
+                exit();
+            }
+        }
+    }
+    
+    /**
+     * Get cashier display name
+     */
+    public function getCashierName() {
+        $isAdmin = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin';
+        return $isAdmin
+            ? (isset($_SESSION['admin_username']) ? $_SESSION['admin_username'] : 'Admin')
+            : (isset($_SESSION['staff_name']) ? $_SESSION['staff_name'] : 'Staff');
+    }
+    
+    /**
+     * Get cashier position
+     */
+    public function getCashierPosition() {
+        $isAdmin = isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'admin';
+        return $isAdmin
+            ? 'Administrator'
+            : (isset($_SESSION['staff_position']) ? $_SESSION['staff_position'] : 'Staff');
+    }
+    
+    /**
+     * Get cashier info (name and position)
+     */
+    public function getCashierInfo() {
+        return [
+            'name' => $this->getCashierName(),
+            'position' => $this->getCashierPosition()
+        ];
+    }
+    
+    /**
+     * Process payment counter payment
+     */
+    public function processPaymentCounterPayment($order_ids, $total_amount, $payment_method, $cash_received = null, $tng_reference = null) {
+        $cashierInfo = $this->getCashierInfo();
+        $cashierName = $cashierInfo['name'];
+        
+        try {
+            if ($payment_method === 'tng_pay') {
+                // Process TNG Pay payment with auto-print
+                $payment_id = $this->processPaymentWithAutoPrint($order_ids, $total_amount, 'tng_pay', $cashierName, null, $tng_reference);
+            } else {
+                // Process cash payment with auto-print
+                $payment_id = $this->processPaymentWithAutoPrint($order_ids, $total_amount, 'cash', $cashierName, $cash_received, null);
+            }
+            
+            // Redirect directly to print receipt page for auto-printing
+            // Check if this is a merged bill and redirect accordingly
+            if ($this->isMergedBill($order_ids)) {
+                header('Location: print_receipt_merged.php?payment_id=' . $payment_id . '&auto_print=1');
+            } else {
+                header('Location: print_receipt.php?payment_id=' . $payment_id . '&auto_print=1');
+            }
+            exit();
+        } catch (Exception $e) {
+            return "Error processing payment: " . $e->getMessage();
+        }
+    }
+    
+    /**
+     * Get filtered tables for payment counter
+     */
+    public function getFilteredTables($table_filter = null) {
+        $all_tables = $this->getAllTablesWithStatus();
+        
+        if ($table_filter) {
+            $tables_with_orders = array_filter($all_tables, function($table) use ($table_filter) {
+                return $table['table_number'] == $table_filter;
+            });
+        } else {
+            $tables_with_orders = $all_tables;
+        }
+        
+        return [
+            'all_tables' => $all_tables,
+            'filtered_tables' => $tables_with_orders,
+            'available_tables' => array_keys($all_tables)
+        ];
+    }
+    
+    /**
+     * Render table cards for payment counter
+     */
+    public function renderTableCards($tables_with_orders) {
+        $html = '';
+        
+        foreach ($tables_with_orders as $table_number => $table_data) {
+            $html .= '<div class="table-card table-status-' . $table_data['status'] . '" onclick="window.location.href=\'table_bills.php?table=' . $table_number . '\'">';
+            $html .= '<div class="table-header">';
+            $html .= '<div class="table-number">';
+            $html .= htmlspecialchars($table_number);
+            $html .= '</div>';
+            $html .= '<div class="table-status">';
+            
+            if ($table_data['status'] === 'empty') {
+                $html .= 'Empty';
+            } else {
+                $html .= 'Occupied';
+            }
+            
+            $html .= '</div>';
+            $html .= '</div>';
+            $html .= '</div>';
+        }
+        
+        return $html;
+    }
+    
+    /**
+     * Render table summary for payment counter
+     */
+    public function renderTableSummary($all_tables) {
+        $total_tables = count($all_tables);
+        $occupied_count = count(array_filter($all_tables, fn($t) => $t['status'] !== 'empty'));
+        $empty_count = count(array_filter($all_tables, fn($t) => $t['status'] === 'empty'));
+        
+        $html = '<div class="table-summary">';
+        $html .= '<div class="table-count">';
+        $html .= '<i class="fas fa-table"></i> Total Tables: ' . $total_tables;
+        $html .= '<span class="ms-3">';
+        $html .= '<span class="badge bg-danger">' . $occupied_count . ' Occupied</span>';
+        $html .= '<span class="badge bg-success">' . $empty_count . ' Empty</span>';
+        $html .= '</span>';
+        $html .= '</div>';
+        $html .= '</div>';
+        
+        return $html;
+    }
+    
+    /**
+     * Check if the order IDs represent a merged bill (multiple tables)
+     */
+    private function isMergedBill($order_ids) {
+        try {
+            if (empty($order_ids)) {
+                return false;
+            }
+            
+            $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+            $query = "SELECT COUNT(DISTINCT t.table_number) as table_count
+                      FROM orders o 
+                      JOIN tables t ON o.table_id = t.id 
+                      WHERE o.id IN ($placeholders)";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->execute($order_ids);
+            $table_count = $stmt->fetchColumn();
+            
+            return $table_count > 1;
+            
+        } catch (Exception $e) {
+            error_log("Error in PaymentController::isMergedBill: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Render table dropdown options
+     */
+    public function renderTableDropdownOptions($available_tables, $selected_table = null) {
+        $html = '<option value="">All Tables</option>';
+        
+        foreach ($available_tables as $table_num) {
+            $selected = ($selected_table == $table_num) ? 'selected' : '';
+            $html .= '<option value="' . $table_num . '" ' . $selected . '>';
+            $html .= 'Table ' . $table_num;
+            $html .= '</option>';
+        }
+        
+        return $html;
     }
 }
 ?>

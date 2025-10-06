@@ -3,12 +3,14 @@ session_start();
 require_once(__DIR__ . '/../config/Database.php');
 require_once(__DIR__ . '/../classes/Auth.php');
 require_once(__DIR__ . '/../classes/Order.php');
+require_once(__DIR__ . '/../classes/SystemSettings.php');
 require_once(__DIR__ . '/classes/ReportController.php');
 
 $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
 $orderModel = new Order($db);
+$systemSettings = new SystemSettings($db);
 $reportController = new ReportController();
 
 // Check if user is logged in
@@ -36,50 +38,220 @@ $report_type = isset($_GET['type']) ? $_GET['type'] : 'sales';
 // Get view mode (daily, weekly, monthly)
 $view_mode = isset($_GET['view']) ? $_GET['view'] : 'daily';
 
+// Function to round to nearest 0.05 (5 cents) for cash transactions
+function customRound($amount) {
+    // Round to nearest 0.05 (5 cents) for cash transactions
+    // Multiply by 20, round to nearest integer, then divide by 20
+    return round($amount * 20) / 20;
+}
+
+// Function to recalculate payment amount with service tax
+function recalculatePaymentAmount($item_details, $systemSettings) {
+    if (empty($item_details)) {
+        return 0;
+    }
+    
+    $subtotal = 0;
+    $item_details_array = explode('||', $item_details);
+    
+    foreach ($item_details_array as $item) {
+        if (empty(trim($item))) continue;
+        list($quantity, $price) = explode(':', $item);
+        $subtotal += $quantity * $price;
+    }
+    
+    // Calculate tax and service tax
+    $tax_rate = $systemSettings->getTaxRate();
+    $service_tax_rate = $systemSettings->getServiceTaxRate();
+    $tax_amount = $subtotal * $tax_rate;
+    $service_tax_amount = $subtotal * $service_tax_rate;
+    $total_with_tax = $subtotal + $tax_amount + $service_tax_amount;
+    
+    return customRound($total_with_tax);
+}
+
+// Function to check if payment was made after service tax implementation
+function wasPaymentAfterServiceTax($payment_date) {
+    // Service tax was implemented on a specific date - adjust this date as needed
+    $service_tax_implementation_date = '2024-01-01'; // Adjust this date as needed
+    
+    return strtotime($payment_date) >= strtotime($service_tax_implementation_date);
+}
+
 try {
-    // Get sales summary data using ReportController for consistency
-    $sales_summary = $reportController->getSalesSummary($start_date, $end_date);
+    // Get sales summary data using ReportController based on view mode
+    $sales_summary = $reportController->getSalesSummaryByViewMode($start_date, $end_date, $view_mode);
     
     // Sales data based on view mode
     if ($view_mode == 'weekly') {
-        // Weekly sales data for chart
+        // Weekly sales data for chart - get individual payments to recalculate with service tax
         $sales_sql = "SELECT 
                         YEARWEEK(p.payment_date, 1) as year_week,
                         MIN(DATE(p.payment_date)) as week_start,
                         MAX(DATE(p.payment_date)) as week_end,
-                        SUM(p.amount) as total_sales,
-                        COUNT(p.payment_id) as transaction_count
+                        p.payment_id,
+                        p.amount,
+                        GROUP_CONCAT(CONCAT(oi.quantity, ':', m.price) SEPARATOR '||') as item_details
                       FROM payments p
+                      JOIN orders o ON p.order_id = o.id
+                      LEFT JOIN order_items oi ON o.id = oi.order_id
+                      LEFT JOIN menu_items m ON oi.menu_item_id = m.id
                       WHERE p.payment_date BETWEEN ? AND ?
-                      GROUP BY YEARWEEK(p.payment_date, 1)
+                      AND p.payment_status = 'completed'
+                      GROUP BY p.payment_id, YEARWEEK(p.payment_date, 1)
                       ORDER BY year_week";
     } else if ($view_mode == 'monthly') {
-        // Monthly sales data for chart
+        // Monthly sales data for chart - get individual payments to recalculate with service tax
         $sales_sql = "SELECT 
                         DATE_FORMAT(p.payment_date, '%Y-%m') as month,
                         MIN(DATE(p.payment_date)) as month_start,
                         MAX(DATE(p.payment_date)) as month_end,
-                        SUM(p.amount) as total_sales,
-                        COUNT(p.payment_id) as transaction_count
+                        p.payment_id,
+                        p.amount,
+                        p.payment_date,
+                        GROUP_CONCAT(CONCAT(oi.quantity, ':', m.price) SEPARATOR '||') as item_details
                       FROM payments p
+                      JOIN orders o ON p.order_id = o.id
+                      LEFT JOIN order_items oi ON o.id = oi.order_id
+                      LEFT JOIN menu_items m ON oi.menu_item_id = m.id
                       WHERE p.payment_date BETWEEN ? AND ?
-                      GROUP BY DATE_FORMAT(p.payment_date, '%Y-%m')
+                      GROUP BY p.payment_id, DATE_FORMAT(p.payment_date, '%Y-%m')
                       ORDER BY month";
     } else {
-        // Daily sales data for chart (default)
+        // Daily sales data for chart (default) - get individual payments to recalculate with service tax
         $sales_sql = "SELECT 
                         DATE(p.payment_date) as sale_date,
-                        SUM(p.amount) as total_sales,
-                        COUNT(p.payment_id) as transaction_count
+                        p.payment_id,
+                        p.amount,
+                        GROUP_CONCAT(CONCAT(oi.quantity, ':', m.price) SEPARATOR '||') as item_details
                       FROM payments p
+                      JOIN orders o ON p.order_id = o.id
+                      LEFT JOIN order_items oi ON o.id = oi.order_id
+                      LEFT JOIN menu_items m ON oi.menu_item_id = m.id
                       WHERE p.payment_date BETWEEN ? AND ?
-                      GROUP BY DATE(p.payment_date)
+                      AND p.payment_status = 'completed'
+                      GROUP BY p.payment_id, DATE(p.payment_date)
                       ORDER BY sale_date";
     }
     
     $sales_stmt = $db->prepare($sales_sql);
     $sales_stmt->execute([$start_date . ' 00:00:00', $end_date . ' 23:59:59']);
-    $sales_data = $sales_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $raw_sales_data = $sales_stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Process monthly data to recalculate amounts with service tax
+    if ($view_mode == 'monthly') {
+        $monthly_totals = [];
+        foreach ($raw_sales_data as $payment) {
+            $month = $payment['month'];
+            
+            if (!isset($monthly_totals[$month])) {
+                $monthly_totals[$month] = [
+                    'month' => $month,
+                    'month_start' => $payment['month_start'],
+                    'month_end' => $payment['month_end'],
+                    'total_sales' => 0,
+                    'transaction_count' => 0
+                ];
+            }
+            
+            // Recalculate ALL payments with service tax (both old and new)
+            $recalculated_amount = recalculatePaymentAmount($payment['item_details'], $systemSettings);
+            
+            $monthly_totals[$month]['total_sales'] += $recalculated_amount;
+            $monthly_totals[$month]['transaction_count']++;
+        }
+        
+        // Convert back to array format
+        $sales_data = array_values($monthly_totals);
+    } else if ($view_mode == 'weekly') {
+        // For weekly view, recalculate amounts with service tax and group by week
+        $weekly_totals = [];
+        foreach ($raw_sales_data as $payment) {
+            // Check if the payment has the expected structure
+            if (isset($payment['year_week']) && isset($payment['item_details'])) {
+                $year_week = $payment['year_week'];
+                
+                if (!isset($weekly_totals[$year_week])) {
+                    $weekly_totals[$year_week] = [
+                        'year_week' => $year_week,
+                        'week_start' => $payment['week_start'],
+                        'week_end' => $payment['week_end'],
+                        'total_sales' => 0,
+                        'transaction_count' => 0
+                    ];
+                }
+                
+                // Recalculate ALL payments with service tax (both old and new)
+                $recalculated_amount = recalculatePaymentAmount($payment['item_details'], $systemSettings);
+                
+                $weekly_totals[$year_week]['total_sales'] += $recalculated_amount;
+                $weekly_totals[$year_week]['transaction_count']++;
+            } else {
+                // Fallback: use original amount if structure is different
+                if (isset($payment['year_week']) && isset($payment['total_sales'])) {
+                    $year_week = $payment['year_week'];
+                    
+                    if (!isset($weekly_totals[$year_week])) {
+                        $weekly_totals[$year_week] = [
+                            'year_week' => $year_week,
+                            'week_start' => $payment['week_start'],
+                            'week_end' => $payment['week_end'],
+                            'total_sales' => 0,
+                            'transaction_count' => 0
+                        ];
+                    }
+                    
+                    $weekly_totals[$year_week]['total_sales'] += floatval($payment['total_sales']);
+                    $weekly_totals[$year_week]['transaction_count'] += intval($payment['transaction_count']);
+                }
+            }
+        }
+        
+        // Convert back to array format
+        $sales_data = array_values($weekly_totals);
+    } else {
+        // For daily view, recalculate amounts with service tax and group by date
+        $daily_totals = [];
+        foreach ($raw_sales_data as $payment) {
+            // Check if the payment has the expected structure
+            if (isset($payment['sale_date']) && isset($payment['item_details'])) {
+                $sale_date = $payment['sale_date'];
+                
+                if (!isset($daily_totals[$sale_date])) {
+                    $daily_totals[$sale_date] = [
+                        'sale_date' => $sale_date,
+                        'total_sales' => 0,
+                        'transaction_count' => 0
+                    ];
+                }
+                
+                // Recalculate ALL payments with service tax (both old and new)
+                $recalculated_amount = recalculatePaymentAmount($payment['item_details'], $systemSettings);
+                
+                $daily_totals[$sale_date]['total_sales'] += $recalculated_amount;
+                $daily_totals[$sale_date]['transaction_count']++;
+            } else {
+                // Fallback: use original amount if structure is different
+                if (isset($payment['sale_date']) && isset($payment['total_sales'])) {
+                    $sale_date = $payment['sale_date'];
+                    
+                    if (!isset($daily_totals[$sale_date])) {
+                        $daily_totals[$sale_date] = [
+                            'sale_date' => $sale_date,
+                            'total_sales' => 0,
+                            'transaction_count' => 0
+                        ];
+                    }
+                    
+                    $daily_totals[$sale_date]['total_sales'] += floatval($payment['total_sales']);
+                    $daily_totals[$sale_date]['transaction_count'] += intval($payment['transaction_count']);
+                }
+            }
+        }
+        
+        // Convert back to array format
+        $sales_data = array_values($daily_totals);
+    }
     
     // Top selling items with monthly breakdown
     $top_items_sql = "SELECT 
@@ -103,21 +275,8 @@ try {
     $items_stmt->execute([$start_date . ' 00:00:00', $end_date . ' 23:59:59']);
     $top_items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Sales by table
-    $table_sales_sql = "SELECT 
-                          t.table_number,
-                          COUNT(p.payment_id) as transaction_count,
-                          SUM(p.amount) as total_sales
-                        FROM payments p
-                        JOIN orders o ON p.order_id = o.id
-                        JOIN tables t ON o.table_id = t.id
-                        WHERE p.payment_date BETWEEN ? AND ?
-                        GROUP BY t.table_number
-                        ORDER BY total_sales DESC";
-    
-    $table_stmt = $db->prepare($table_sales_sql);
-    $table_stmt->execute([$start_date . ' 00:00:00', $end_date . ' 23:59:59']);
-    $table_sales = $table_stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Sales by table using ReportController for consistent rounding
+    $table_sales = $reportController->getTableSales($start_date, $end_date);
     
     // Prepare chart data
     $chart_labels = [];
@@ -198,8 +357,15 @@ ob_start();
                 <i class="fas fa-money-bill-wave"></i>
             </div>
             <div class="summary-info">
-                <h3>Total <?php echo $view_mode == 'daily' ? 'Daily' : ($view_mode == 'weekly' ? 'Weekly' : 'Monthly'); ?> Sales</h3>
+                <h3>Total <?php echo ucfirst($view_mode); ?> Sales</h3>
                 <p>RM <?php echo number_format($sales_summary['total_sales'] ?? 0, 2); ?></p>
+                <?php if ($view_mode == 'daily' && isset($sales_summary['sale_date'])): ?>
+                    <small><?php echo date('M j, Y', strtotime($sales_summary['sale_date'])); ?></small>
+                <?php elseif ($view_mode == 'weekly' && isset($sales_summary['week_start']) && isset($sales_summary['week_end'])): ?>
+                    <small><?php echo date('M j', strtotime($sales_summary['week_start'])); ?> - <?php echo date('M j, Y', strtotime($sales_summary['week_end'])); ?></small>
+                <?php elseif ($view_mode == 'monthly' && isset($sales_summary['month'])): ?>
+                    <small><?php echo date('F Y', strtotime($sales_summary['month'] . '-01')); ?></small>
+                <?php endif; ?>
             </div>
         </div>
         <div class="summary-card">
@@ -234,21 +400,18 @@ ob_start();
     <div class="report-section">
         <div class="section-header">
             <h2>
-                <?php 
-                if ($view_mode == 'weekly') {
-                    echo 'Weekly Sales';
-                } else if ($view_mode == 'monthly') {
-                    echo 'Monthly Sales';
-                } else {
-                    echo 'Daily Sales';
-                }
-                ?>
+                <?php echo ucfirst($view_mode); ?> Sales
             </h2>
-            <div class="export-options">
-                <a href="export_report.php?type=<?php echo $view_mode; ?>_sales&start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>" class="btn btn-sm btn-outline-primary">
-                    <i class="fas fa-download"></i> Export
-                </a>
-            </div>
+             <div class="export-options">
+                 <?php if ($view_mode == 'monthly'): ?>
+                     <button class="btn btn-sm btn-outline-success me-2" onclick="downloadMonthlySalesPDF()">
+                         <i class="fas fa-file-pdf me-1"></i>Download PDF
+                     </button>
+                 <?php endif; ?>
+                 <a href="export_report.php?type=<?php echo $view_mode; ?>_sales&start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>" class="btn btn-sm btn-outline-primary">
+                     <i class="fas fa-download"></i> Export Excel
+                 </a>
+             </div>
         </div>
         <div class="chart-container">
             <canvas id="salesChart"></canvas>
@@ -323,7 +486,6 @@ ob_start();
     }
     ?>
 
-    <?php if ($view_mode == 'daily'): ?>
     <!-- Daily Sales Breakdown -->
     <div class="report-section">
         <div class="section-header">
@@ -377,7 +539,6 @@ ob_start();
             </table>
         </div>
     </div>
-    <?php endif; ?>
 
     <!-- Hourly Sales Breakdown (Available for all view modes) -->
     <div class="report-section">
@@ -411,7 +572,7 @@ ob_start();
                             <th>Sales Amount</th>
                             <th>Transactions</th>
                             <th>Average Sale</th>
-                            <th>Percentage of <?php echo $view_mode == 'daily' ? 'Day' : ($view_mode == 'weekly' ? 'Week' : 'Month'); ?></th>
+                            <th>Percentage of <?php echo ucfirst($view_mode); ?></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -574,8 +735,8 @@ ob_start();
                             <?php foreach ($table_sales as $table): ?>
                             <tr>
                                 <td>Table <?php echo htmlspecialchars($table['table_number']); ?></td>
-                                <td><?php echo number_format($table['transaction_count']); ?></td>
-                                <td>RM <?php echo number_format($table['total_sales'], 2); ?></td>
+                                <td><?php echo $reportController->formatNumber($table['transaction_count']); ?></td>
+                                <td><?php echo $reportController->formatCurrency($table['total_sales']); ?></td>
                             </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -1079,8 +1240,32 @@ $extra_js = '
             document.body.removeChild(link);
         };
         
-        // Print Top Items as Receipt (Simple Design)
-        window.printTopItemsReceipt = function() {
+         // Download Monthly Sales as PDF
+         window.downloadMonthlySalesPDF = function() {
+             const startDate = "' . $start_date . '";
+             const endDate = "' . $end_date . '";
+             
+             // Try main PDF generation first
+             const link = document.createElement("a");
+             link.href = "generate_monthly_sales_pdf.php?start_date=" + encodeURIComponent(startDate) + "&end_date=" + encodeURIComponent(endDate);
+             link.download = "Monthly_Sales_Report_" + startDate + "_to_" + endDate + ".pdf";
+             document.body.appendChild(link);
+             link.click();
+             document.body.removeChild(link);
+             
+             // If main fails, try alternative PDF after 2 seconds
+             setTimeout(function() {
+                 const altLink = document.createElement("a");
+                 altLink.href = "generate_pdf_report.php?start_date=" + encodeURIComponent(startDate) + "&end_date=" + encodeURIComponent(endDate);
+                 altLink.download = "Monthly_Report_Alt_" + startDate + "_to_" + endDate + ".pdf";
+                 document.body.appendChild(altLink);
+                 altLink.click();
+                 document.body.removeChild(altLink);
+             }, 2000);
+         };
+         
+         // Print Top Items as Receipt (Simple Design)
+         window.printTopItemsReceipt = function() {
             const topItemsData = ' . json_encode($top_items ?? []) . ';
             const startDate = "' . $start_date . '";
             const endDate = "' . $end_date . '";

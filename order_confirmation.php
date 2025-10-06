@@ -9,6 +9,15 @@ $db = $database->getConnection();
 $orderModel = new Order($db);
 $systemSettings = new SystemSettings($db);
 
+// Cash rounding function - rounds to nearest 0.05 (5 cents)
+if (!function_exists('customRound')) {
+    function customRound($amount) {
+        // Round to nearest 0.05 (5 cents) for cash transactions
+        // Multiply by 20, round to nearest integer, then divide by 20
+        return round($amount * 20) / 20;
+    }
+}
+
 $order_id = isset($_GET['order_id']) ? $_GET['order_id'] : null;
 $order = $order_id ? $orderModel->getOrder($order_id) : null;
 
@@ -33,28 +42,7 @@ $token = isset($_GET['token']) ? htmlspecialchars($_GET['token']) : null;
     
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-light fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="index.php<?php echo $table_number && $token ? '?table=' . $table_number . '&token=' . $token : ''; ?>">
-                <i class="fas fa-utensils"></i>
-                Gourmet Delights
-            </a>
-            <div class="d-flex align-items-center gap-3">
-                <?php if ($table_number): ?>
-                <div class="table-info-banner">
-                    <span class="table-number">Table <?php echo $table_number; ?></span>
-                </div>
-                <?php if ($token): ?>
-                <a href="view_orders.php?table=<?php echo $table_number; ?>&token=<?php echo $token; ?>" class="view-orders-btn">
-                    <i class="fas fa-list-ul"></i>
-                    View Orders
-                </a>
-                <?php endif; ?>
-                <?php endif; ?>
-            </div>
-        </div>
-    </nav>
+    <?php include 'includes/navbar.php'; ?>
 
     <!-- Confirmation Content -->
     <div class="container">
@@ -98,21 +86,34 @@ $token = isset($_GET['token']) ? htmlspecialchars($_GET['token']) : null;
                             <span>RM <?php echo number_format($subtotal, 2); ?></span>
                         </div>
                         <?php 
-                        // Calculate tax using dynamic tax rate
+                        // Calculate tax and service tax using dynamic rates
                         $tax_rate = $systemSettings->getTaxRate();
+                        $service_tax_rate = $systemSettings->getServiceTaxRate();
                         $tax_amount = $subtotal * $tax_rate;
+                        $service_tax_amount = $subtotal * $service_tax_rate;
+                        $total_with_tax = $subtotal + $tax_amount + $service_tax_amount;
+                        
+                        // Apply cash rounding to the final total
+                        $total_with_tax = customRound($total_with_tax);
+                        
                         $tax_name = $systemSettings->getTaxName();
                         $tax_percent = $systemSettings->getTaxRatePercent();
+                        $service_tax_name = $systemSettings->getServiceTaxName();
+                        $service_tax_percent = $systemSettings->getServiceTaxRatePercent();
                         $currency_symbol = $systemSettings->getCurrencySymbol();
                         ?>
                         <div class="detail-row">
                             <span><?php echo $tax_name; ?> (<?php echo $tax_percent; ?>%):</span>
                             <span><?php echo $currency_symbol; ?> <?php echo number_format($tax_amount, 2); ?></span>
                         </div>
+                        <div class="detail-row">
+                            <span><?php echo $service_tax_name; ?> (<?php echo $service_tax_percent; ?>%):</span>
+                            <span><?php echo $currency_symbol; ?> <?php echo number_format($service_tax_amount, 2); ?></span>
+                        </div>
                         <div class="order-total">
                             <div class="detail-row">
-                                <span>Total (Incl. <?php echo $tax_name; ?>):</span>
-                                <span><?php echo $currency_symbol; ?> <?php echo number_format($subtotal + $tax_amount, 2); ?></span>
+                                <span>Total (Incl. <?php echo $tax_name; ?> & <?php echo $service_tax_name; ?>):</span>
+                                <span><?php echo $currency_symbol; ?> <?php echo number_format($total_with_tax, 2); ?></span>
                             </div>
                         </div>
                     </div>

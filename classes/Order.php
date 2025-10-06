@@ -132,23 +132,90 @@ class Order extends Model {
         }
     }
     
+    /**
+     * Test method to check basic database connectivity
+     */
+    public function testConnection() {
+        try {
+            $query = "SELECT COUNT(*) as count FROM orders";
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            error_log("Database connection test successful. Total orders: " . $result['count']);
+            return true;
+        } catch (Exception $e) {
+            error_log("Database connection test failed: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Simple method to get recent orders without complex processing
+     */
+    public function getSimpleRecentOrders($limit = 100) {
+        try {
+            $query = "SELECT o.*, t.table_number 
+                     FROM orders o
+                     LEFT JOIN tables t ON o.table_id = t.id
+                     ORDER BY o.created_at DESC
+                     LIMIT ?";
+            
+            $stmt = $this->conn->prepare($query);
+            $stmt->execute([$limit]);
+            $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Add basic item information
+            foreach ($orders as &$order) {
+                $order['items'] = [];
+                $order['order_items'] = [];
+                $order['special_instructions'] = [];
+                $order['items_list'] = '';
+                $order['item_count'] = 0;
+                
+                // Get items for this order
+                $items_query = "SELECT oi.*, mi.name 
+                               FROM order_items oi 
+                               JOIN menu_items mi ON oi.menu_item_id = mi.id 
+                               WHERE oi.order_id = ?";
+                $items_stmt = $this->conn->prepare($items_query);
+                $items_stmt->execute([$order['id']]);
+                $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                $order['item_count'] = count($items);
+                foreach ($items as $item) {
+                    $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
+                    $order['order_items'][] = [
+                        'id' => $item['id'],
+                        'name' => $item['name'],
+                        'quantity' => $item['quantity'],
+                        'price' => $item['price']
+                    ];
+                    if (!empty($item['special_instructions'])) {
+                        $order['special_instructions'][] = [
+                            'item' => $item['name'],
+                            'instructions' => $item['special_instructions']
+                        ];
+                    }
+                }
+                $order['items_list'] = implode(', ', $order['items']);
+            }
+            
+            error_log("getSimpleRecentOrders returned " . count($orders) . " orders");
+            return $orders;
+        } catch (Exception $e) {
+            error_log("Error in getSimpleRecentOrders: " . $e->getMessage());
+            throw new Exception("Error retrieving recent orders: " . $e->getMessage());
+        }
+    }
+
     public function getRecentOrders($start_date = null, $end_date = null, $limit = 10) {
         try {
+            // First, let's try a simpler query to test the basic functionality
             $query = "SELECT o.*, t.table_number,
-                     COUNT(oi.id) as item_count,
-                     GROUP_CONCAT(
-                        JSON_OBJECT(
-                            'id', oi.menu_item_id,
-                            'name', mi.name,
-                            'quantity', oi.quantity,
-                            'price', oi.price,
-                            'instructions', oi.special_instructions
-                        )
-                     ) as items
+                     COUNT(oi.id) as item_count
                      FROM orders o
                      LEFT JOIN tables t ON o.table_id = t.id
                      LEFT JOIN order_items oi ON o.id = oi.order_id
-                     LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
                      WHERE 1=1";
 
             $params = [];
@@ -168,23 +235,59 @@ class Order extends Model {
                        LIMIT ?";
             $params[] = $limit;
 
+            error_log("getRecentOrders query: " . $query);
+            error_log("getRecentOrders params: " . print_r($params, true));
+
             $stmt = $this->conn->prepare($query);
             $stmt->execute($params);
 
+            error_log("getRecentOrders query executed successfully");
             $orders = [];
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                // Convert the GROUP_CONCAT result into a proper JSON array
-                if ($row['items']) {
-                    $items_string = '[' . str_replace('}{', '},{', $row['items']) . ']';
-                    $row['items'] = $items_string;
+                // Initialize arrays
+                $row['items'] = [];
+                $row['order_items'] = [];
+                $row['special_instructions'] = [];
+                $row['items_list'] = '';
+                
+                // Get order items separately to avoid complex JSON issues
+                $items_query = "SELECT oi.*, mi.name 
+                               FROM order_items oi 
+                               JOIN menu_items mi ON oi.menu_item_id = mi.id 
+                               WHERE oi.order_id = ?";
+                $items_stmt = $this->conn->prepare($items_query);
+                $items_stmt->execute([$row['id']]);
+                $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                foreach ($items as $item) {
+                    $row['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
+                    $row['order_items'][] = [
+                        'id' => $item['id'],
+                        'name' => $item['name'],
+                        'quantity' => $item['quantity'],
+                        'price' => $item['price']
+                    ];
+                    if (!empty($item['special_instructions'])) {
+                        $row['special_instructions'][] = [
+                            'item' => $item['name'],
+                            'instructions' => $item['special_instructions']
+                        ];
+                    }
                 }
+                
+                $row['items_list'] = implode(', ', $row['items']);
                 $orders[] = $row;
             }
 
+            error_log("getRecentOrders processed " . count($orders) . " orders");
             return $orders;
         } catch (PDOException $e) {
-            error_log("Error in getRecentOrders: " . $e->getMessage());
-            throw new Exception("Error retrieving recent orders");
+            error_log("PDO Error in getRecentOrders: " . $e->getMessage());
+            error_log("PDO Error Code: " . $e->getCode());
+            throw new Exception("Error retrieving recent orders: " . $e->getMessage());
+        } catch (Exception $e) {
+            error_log("General Error in getRecentOrders: " . $e->getMessage());
+            throw new Exception("Error retrieving recent orders: " . $e->getMessage());
         }
     }
     
@@ -265,36 +368,45 @@ class Order extends Model {
             
             // Process the JSON data for each order
             foreach ($orders as &$order) {
-                $items_data = explode('},{', trim($order['items_data'], '[]'));
                 $order['items'] = [];
                 $order['order_items'] = [];
                 $order['special_instructions'] = [];
+                $order['items_list'] = '';
                 
-                foreach ($items_data as $item_json) {
-                    if (!empty($item_json)) {
-                        // Fix JSON format if needed
-                        if (substr($item_json, -1) !== '}') $item_json .= '}';
-                        if (substr($item_json, 0, 1) !== '{') $item_json = '{' . $item_json;
-                        
-                        $item = json_decode($item_json, true);
-                        if ($item) {
-                            $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
-                            $order['order_items'][] = [
-                                'id' => $item['id'],
-                                'name' => $item['name'],
-                                'quantity' => $item['quantity'],
-                                'price' => $item['price']
-                            ];
-                            if (!empty($item['instructions'])) {
-                                $order['special_instructions'][] = [
-                                    'item' => $item['name'],
-                                    'instructions' => $item['instructions']
+                if (!empty($order['items_data'])) {
+                    // Handle the GROUP_CONCAT JSON data properly
+                    $items_data = $order['items_data'];
+                    
+                    // If it's a single JSON object, wrap it in an array
+                    if (substr($items_data, 0, 1) === '{') {
+                        $items_data = '[' . $items_data . ']';
+                    }
+                    
+                    // Parse the JSON array
+                    $items = json_decode($items_data, true);
+                    
+                    if (is_array($items)) {
+                        foreach ($items as $item) {
+                            if (is_array($item) && isset($item['name'])) {
+                                $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
+                                $order['order_items'][] = [
+                                    'id' => $item['id'],
+                                    'name' => $item['name'],
+                                    'quantity' => $item['quantity'],
+                                    'price' => $item['price']
                                 ];
+                                if (!empty($item['instructions'])) {
+                                    $order['special_instructions'][] = [
+                                        'item' => $item['name'],
+                                        'instructions' => $item['instructions']
+                                    ];
+                                }
                             }
                         }
                     }
                 }
-                $order['items'] = implode(', ', $order['items']);
+                
+                $order['items_list'] = implode(', ', $order['items']);
             }
             
             return $orders;
@@ -693,81 +805,76 @@ class Order extends Model {
 
     public function getCancelledOrders($start_date, $end_date) {
         try {
+            // First, get the basic order data (without cancelled_at and cancel_reason columns)
             $query = "SELECT 
-                        o.id,
-                        o.status,
-                        o.total_amount,
+                        o.id, 
+                        o.table_id, 
+                        o.status, 
+                        o.total_amount, 
                         o.created_at,
-                        t.table_number,
-                        COUNT(oi.id) as item_count,
-                        GROUP_CONCAT(
-                            JSON_OBJECT(
-                                'id', oi.id,
-                                'name', mi.name,
-                                'quantity', oi.quantity,
-                                'price', oi.price,
-                                'instructions', COALESCE(oi.special_instructions, '')
-                            )
-                        ) as items_data
-                    FROM orders o
-                    LEFT JOIN tables t ON o.table_id = t.id
-                    LEFT JOIN order_items oi ON o.id = oi.order_id
-                    LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
-                    WHERE o.status = 'cancelled'
-                    AND DATE(o.created_at) BETWEEN :start_date AND :end_date
-                    GROUP BY 
-                        o.id,
-                        o.status,
-                        o.total_amount,
-                        o.created_at,
-                        t.table_number
-                    ORDER BY o.created_at DESC";
-
+                        t.table_number, 
+                        COUNT(oi.id) as item_count
+                       FROM orders o
+                       LEFT JOIN tables t ON o.table_id = t.id
+                       LEFT JOIN order_items oi ON o.id = oi.order_id
+                       WHERE o.status = 'cancelled' 
+                       AND DATE(o.created_at) BETWEEN :start_date AND :end_date
+                       GROUP BY o.id, o.table_id, o.status, o.total_amount, o.created_at, t.table_number
+                       ORDER BY o.created_at DESC";
+            
             $stmt = $this->conn->prepare($query);
             $stmt->bindParam(':start_date', $start_date);
             $stmt->bindParam(':end_date', $end_date);
             $stmt->execute();
-
+            
             $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Process the JSON data for each order
+            // Now get the items for each order separately
             foreach ($orders as &$order) {
-                $items_data = explode('},{', trim($order['items_data'], '[]'));
+                // Initialize arrays
                 $order['items'] = [];
                 $order['order_items'] = [];
                 $order['special_instructions'] = [];
+                $order['items_list'] = '';
                 
-                foreach ($items_data as $item_json) {
-                    if (!empty($item_json)) {
-                        // Fix JSON format if needed
-                        if (substr($item_json, -1) !== '}') $item_json .= '}';
-                        if (substr($item_json, 0, 1) !== '{') $item_json = '{' . $item_json;
-                        
-                        $item = json_decode($item_json, true);
-                        if ($item) {
-                            $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
-                            $order['order_items'][] = [
-                                'id' => $item['id'],
-                                'name' => $item['name'],
-                                'quantity' => $item['quantity'],
-                                'price' => $item['price']
-                            ];
-                            if (!empty($item['instructions'])) {
-                                $order['special_instructions'][] = [
-                                    'item' => $item['name'],
-                                    'instructions' => $item['instructions']
-                                ];
-                            }
-                        }
+                // Add missing columns with default values
+                $order['cancelled_at'] = $order['created_at']; // Use created_at as cancelled_at for now
+                $order['cancel_reason'] = 'No reason provided'; // Default cancel reason
+                
+                // Get order items separately
+                $items_query = "SELECT oi.*, mi.name 
+                               FROM order_items oi 
+                               JOIN menu_items mi ON oi.menu_item_id = mi.id 
+                               WHERE oi.order_id = ?";
+                $items_stmt = $this->conn->prepare($items_query);
+                $items_stmt->execute([$order['id']]);
+                $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                foreach ($items as $item) {
+                    $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
+                    $order['order_items'][] = [
+                        'id' => $item['id'],
+                        'name' => $item['name'],
+                        'quantity' => $item['quantity'],
+                        'price' => $item['price']
+                    ];
+                    if (!empty($item['special_instructions'])) {
+                        $order['special_instructions'][] = [
+                            'item' => $item['name'],
+                            'instructions' => $item['special_instructions']
+                        ];
                     }
                 }
                 $order['items_list'] = implode(', ', $order['items']);
             }
-
+            
             return $orders;
         } catch (PDOException $e) {
-            error_log("Error in getCancelledOrders: " . $e->getMessage());
-            return [];
+            error_log("PDO Error in getCancelledOrders: " . $e->getMessage());
+            throw new Exception("Error retrieving cancelled orders: " . $e->getMessage());
+        } catch (Exception $e) {
+            error_log("General Error in getCancelledOrders: " . $e->getMessage());
+            throw new Exception("Error retrieving cancelled orders: " . $e->getMessage());
         }
     }
 

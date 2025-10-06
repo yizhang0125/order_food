@@ -9,6 +9,15 @@ $db = $database->getConnection();
 $orderModel = new Order($db);
 $systemSettings = new SystemSettings($db);
 
+// Cash rounding function - rounds to nearest 0.05 (5 cents)
+if (!function_exists('customRound')) {
+    function customRound($amount) {
+        // Round to nearest 0.05 (5 cents) for cash transactions
+        // Multiply by 20, round to nearest integer, then divide by 20
+        return round($amount * 20) / 20;
+    }
+}
+
 // Get table number and token from URL
 $table_number = isset($_GET['table']) ? htmlspecialchars($_GET['table']) : null;
 $token = isset($_GET['token']) ? htmlspecialchars($_GET['token']) : null;
@@ -181,6 +190,7 @@ if ($table_number && $token) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="assets/css/navbar.css" rel="stylesheet">
     
     <style>
         :root {
@@ -207,44 +217,7 @@ if ($table_number && $token) {
             line-height: 1.6;
         }
 
-        .navbar {
-            background: white;
-            box-shadow: var(--box-shadow);
-            padding: 1rem 0;
-        }
-
-        .navbar-brand {
-            font-family: 'Poppins', sans-serif;
-            font-weight: 600;
-            font-size: 1.25rem;
-            color: var(--color-primary) !important;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .navbar-brand i {
-            font-size: 1.5rem;
-        }
-
-        .back-button {
-            padding: 0.5rem 1.25rem;
-            border-radius: 50px;
-            background: var(--color-primary);
-            color: white;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-
-        .back-button:hover {
-            background: var(--color-secondary);
-            color: white;
-            transform: translateY(-2px);
-        }
+        /* Navbar styles are now in navbar.css */
 
         .table-info {
             background: white;
@@ -553,18 +526,7 @@ if ($table_number && $token) {
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-light fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="#">
-                <i class="fas fa-utensils"></i>
-                Gourmet Delights
-            </a>
-            <a href="index.php<?php echo ($table_number && $token) ? '?table=' . $table_number . '&token=' . $token : ''; ?>" class="back-button">
-                <i class="fas fa-arrow-left"></i>
-                Back to Menu
-            </a>
-        </div>
-    </nav>
+    <?php include 'includes/navbar.php'; ?>
 
     <div class="container">
         <div class="table-info">
@@ -682,12 +644,22 @@ if ($table_number && $token) {
                 </div>
                 <div class="order-footer">
                     <?php
-                    // Calculate tax using dynamic tax rate
+                    // Calculate tax and service tax using dynamic rates
                     $tax_rate = $systemSettings->getTaxRate();
-                    $subtotal = $order['total_amount'] / (1 + $tax_rate);
-                    $tax_amount = $order['total_amount'] - $subtotal;
+                    $service_tax_rate = $systemSettings->getServiceTaxRate();
+                    $total_tax_rate = $tax_rate + $service_tax_rate;
+                    $subtotal = $order['total_amount'] / (1 + $total_tax_rate);
+                    $tax_amount = $subtotal * $tax_rate;
+                    $service_tax_amount = $subtotal * $service_tax_rate;
+                    $total_with_tax = $subtotal + $tax_amount + $service_tax_amount;
+                    
+                    // Apply cash rounding to the final total
+                    $total_with_tax = customRound($total_with_tax);
+                    
                     $tax_name = $systemSettings->getTaxName();
                     $tax_percent = $systemSettings->getTaxRatePercent();
+                    $service_tax_name = $systemSettings->getServiceTaxName();
+                    $service_tax_percent = $systemSettings->getServiceTaxRatePercent();
                     $currency_symbol = $systemSettings->getCurrencySymbol();
                     ?>
                     <div class="order-subtotal">
@@ -698,9 +670,13 @@ if ($table_number && $token) {
                         <span><?php echo $tax_name; ?> (<?php echo $tax_percent; ?>%)</span>
                         <span><?php echo $currency_symbol; ?> <?php echo number_format($tax_amount, 2); ?></span>
                     </div>
+                    <div class="order-sst">
+                        <span><?php echo $service_tax_name; ?> (<?php echo $service_tax_percent; ?>%)</span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($service_tax_amount, 2); ?></span>
+                    </div>
                     <div class="order-total">
                         <span>Total</span>
-                        <span><?php echo $currency_symbol; ?> <?php echo number_format($order['total_amount'], 2); ?></span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($total_with_tax, 2); ?></span>
                     </div>
                     <div class="order-time">
                         Ordered: <?php echo date('d M Y, h:i A', strtotime($order['created_at'])); ?>

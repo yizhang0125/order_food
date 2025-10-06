@@ -2,35 +2,54 @@
 session_start();
 require_once(__DIR__ . '/../config/Database.php');
 require_once(__DIR__ . '/../classes/Auth.php');
+require_once(__DIR__ . '/../classes/SystemSettings.php');
 
 $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
+$systemSettings = new SystemSettings($db);
 
-// Custom rounding function for payment counter
+// Cash rounding function - rounds to nearest 0.05 (5 cents)
 if (!function_exists('customRound')) {
     function customRound($amount) {
-        // Get the decimal part (last 2 digits)
-        $decimal_part = fmod($amount * 100, 100);
-        
-        // Handle rounding rules based on decimal part
-        if ($decimal_part >= 11 && $decimal_part <= 12) {
-            // Round to .10 (e.g., 69.11, 69.12 -> 69.10)
-            return floor($amount) + 0.10;
-        } elseif ($decimal_part >= 13 && $decimal_part <= 14) {
-            // Round to .15 (e.g., 69.13, 69.14 -> 69.15)
-            return floor($amount) + 0.15;
-        } elseif ($decimal_part >= 16 && $decimal_part <= 17) {
-            // Round to .15 (e.g., 69.16, 69.17 -> 69.15)
-            return floor($amount) + 0.15;
-        } elseif ($decimal_part >= 18 && $decimal_part <= 19) {
-            // Round to .20 (e.g., 69.18, 69.19 -> 69.20)
-            return floor($amount) + 0.20;
-        } else {
-            // Standard rounding for other cases
-            return round($amount, 2);
-        }
+        // Round to nearest 0.05 (5 cents) for cash transactions
+        // Multiply by 20, round to nearest integer, then divide by 20
+        return round($amount * 20) / 20;
     }
+}
+
+// Function to recalculate payment amount with service tax
+function recalculatePaymentAmount($item_details, $systemSettings) {
+    if (empty($item_details)) {
+        return 0;
+    }
+    
+    $subtotal = 0;
+    $item_details_array = explode('||', $item_details);
+    
+    foreach ($item_details_array as $item) {
+        if (empty(trim($item))) continue;
+        list($quantity, $price) = explode(':', $item);
+        $subtotal += $quantity * $price;
+    }
+    
+    // Calculate tax and service tax
+    $tax_rate = $systemSettings->getTaxRate();
+    $service_tax_rate = $systemSettings->getServiceTaxRate();
+    $tax_amount = $subtotal * $tax_rate;
+    $service_tax_amount = $subtotal * $service_tax_rate;
+    $total_with_tax = $subtotal + $tax_amount + $service_tax_amount;
+    
+    return customRound($total_with_tax);
+}
+
+// Function to check if payment was made after service tax implementation
+function wasPaymentAfterServiceTax($payment_date) {
+    // Service tax was implemented on a specific date - adjust this date as needed
+    // For now, we'll use a date when service tax was likely implemented
+    $service_tax_implementation_date = '2024-01-01'; // Adjust this date as needed
+    
+    return strtotime($payment_date) >= strtotime($service_tax_implementation_date);
 }
 
 // Check if user is logged in
@@ -48,10 +67,11 @@ try {
     // First, get all payments within the date range
     $sql = "SELECT p.payment_id, p.order_id, p.amount, p.payment_status, 
             p.payment_date, p.cash_received, p.change_amount, p.processed_by_name,
-            p.payment_method, p.tng_reference,
+            p.payment_method, p.tng_reference, p.discount_amount, p.discount_type, p.discount_reason,
             o.id as order_id, t.table_number, o.created_at as order_date,
             GROUP_CONCAT(CONCAT(m.name, ' (', oi.quantity, ')') SEPARATOR ', ') as items_list,
-            SUM(oi.quantity) as item_count
+            SUM(oi.quantity) as item_count,
+            GROUP_CONCAT(CONCAT(oi.quantity, ':', m.price) SEPARATOR '||') as item_details
             FROM payments p
             JOIN orders o ON p.order_id = o.id
             LEFT JOIN tables t ON o.table_id = t.id
@@ -88,6 +108,9 @@ try {
                 'payment_statuses' => [],
                 'payment_methods' => [],
                 'tng_references' => [],
+                'discount_amounts' => [],
+                'discount_types' => [],
+                'discount_reasons' => [],
                 'latest_payment_date' => $payment['payment_date'],
                 'items_list' => [],
                 'item_count' => 0,
@@ -95,15 +118,21 @@ try {
             ];
         }
         
+        // Recalculate ALL payments with service tax (both old and new)
+        $payment_amount = recalculatePaymentAmount($payment['item_details'], $systemSettings);
+        
         // Add payment details
         $grouped_payments[$key]['payment_count']++;
         $grouped_payments[$key]['payment_ids'][] = $payment['payment_id'];
         $grouped_payments[$key]['order_ids'][] = $payment['order_id'];
-        $grouped_payments[$key]['payment_amounts'][] = $payment['amount'];
+        $grouped_payments[$key]['payment_amounts'][] = $payment_amount;
         $grouped_payments[$key]['payment_statuses'][] = $payment['payment_status'];
         $grouped_payments[$key]['payment_methods'][] = $payment['payment_method'];
         $grouped_payments[$key]['tng_references'][] = $payment['tng_reference'];
-        $grouped_payments[$key]['total_amount'] += floatval($payment['amount']);
+        $grouped_payments[$key]['discount_amounts'][] = $payment['discount_amount'] ?? 0;
+        $grouped_payments[$key]['discount_types'][] = $payment['discount_type'] ?? null;
+        $grouped_payments[$key]['discount_reasons'][] = $payment['discount_reason'] ?? null;
+        $grouped_payments[$key]['total_amount'] += $payment_amount;
         
         // Add items to the items list without duplicates
         $items = explode(', ', $payment['items_list']);
@@ -133,7 +162,21 @@ try {
         
         // Ensure change amount is calculated correctly for grouped payments
         if (count($group['payment_amounts_array']) > 1) {
-            $group['change_amount'] = floatval($group['cash_received']) - $group['total_amount'];
+            // Only calculate change for cash payments
+            $has_cash_payment = false;
+            foreach ($group['payment_methods'] as $method) {
+                if ($method !== 'tng_pay') {
+                    $has_cash_payment = true;
+                    break;
+                }
+            }
+            
+            if ($has_cash_payment) {
+                $group['change_amount'] = floatval($group['cash_received']) - $group['total_amount'];
+            } else {
+                // All TNG payments - no change amount
+                $group['change_amount'] = 0;
+            }
         }
         
         $payments[] = $group;
@@ -147,10 +190,31 @@ try {
     // Calculate overall totals
     $total_payments = 0;
     $total_amount = 0;
+    $monthly_totals = [];
+    
     foreach ($payments as $payment) {
         $total_payments += $payment['payment_count'];
         $total_amount += $payment['total_amount'];
+        
+        // Group by month for monthly summary
+        $payment_date = new DateTime($payment['latest_payment_date']);
+        $month_key = $payment_date->format('Y-m');
+        $month_name = $payment_date->format('F Y');
+        
+        if (!isset($monthly_totals[$month_key])) {
+            $monthly_totals[$month_key] = [
+                'month' => $month_name,
+                'payments' => 0,
+                'amount' => 0
+            ];
+        }
+        
+        $monthly_totals[$month_key]['payments'] += $payment['payment_count'];
+        $monthly_totals[$month_key]['amount'] += $payment['total_amount'];
     }
+    
+    // Sort monthly totals by month (newest first)
+    krsort($monthly_totals);
     
 } catch (Exception $e) {
     $error_message = $e->getMessage();
@@ -189,24 +253,39 @@ ob_start();
     </div>
 
     <div class="summary-cards">
-        <div class="summary-card">
-            <div class="summary-icon">
-                <i class="fas fa-receipt"></i>
+        <?php if (!empty($monthly_totals)): ?>
+            <?php foreach (array_slice($monthly_totals, 0, 6) as $month_data): ?>
+            <div class="summary-card">
+                <div class="summary-icon">
+                    <i class="fas fa-calendar-alt"></i>
+                </div>
+                <div class="summary-info">
+                    <h3><?php echo htmlspecialchars($month_data['month']); ?></h3>
+                    <p>RM <?php echo number_format(customRound($month_data['amount']), 2); ?></p>
+                    <small><?php echo $month_data['payments']; ?> payments</small>
+                </div>
             </div>
-            <div class="summary-info">
-                <h3>Total Payments</h3>
-                <p><?php echo $total_payments; ?></p>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <div class="summary-card">
+                <div class="summary-icon">
+                    <i class="fas fa-receipt"></i>
+                </div>
+                <div class="summary-info">
+                    <h3>Total Payments</h3>
+                    <p><?php echo $total_payments; ?></p>
+                </div>
             </div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-icon">
-                <i class="fas fa-money-bill-wave"></i>
+            <div class="summary-card">
+                <div class="summary-icon">
+                    <i class="fas fa-money-bill-wave"></i>
+                </div>
+                <div class="summary-info">
+                    <h3>Total Amount</h3>
+                    <p>RM <?php echo number_format(customRound($total_amount), 2); ?></p>
+                </div>
             </div>
-            <div class="summary-info">
-                <h3>Total Amount</h3>
-                <p>RM <?php echo number_format(customRound($total_amount), 2); ?></p>
-            </div>
-        </div>
+        <?php endif; ?>
     </div>
 
     <div class="orders-container">
@@ -219,6 +298,7 @@ ob_start();
                         <th>Table</th>
                         <th>Items</th>
                         <th>Payment Amount</th>
+                        <th>Discount</th>
                         <th>Payment Method</th>
                         <th>Cash Received</th>
                         <th>Change</th>
@@ -231,7 +311,7 @@ ob_start();
                 <tbody>
                     <?php if (empty($payments)): ?>
                     <tr>
-                        <td colspan="12" class="text-center py-4">
+                        <td colspan="13" class="text-center py-4">
                             <i class="fas fa-inbox fa-2x mb-3 text-muted d-block"></i>
                             No payments found for the selected date range
                         </td>
@@ -289,6 +369,9 @@ ob_start();
                             </td>
                             <td>
                                 <span class="payment-amount">RM <?php echo number_format(customRound($payment['total_amount']), 2); ?></span>
+                                <div class="small text-success">
+                                    <i class="fas fa-check-circle"></i> Includes Service Tax
+                                </div>
                                 <?php if (count($payment_ids) > 1): ?>
                                 <div class="small text-muted">
                                     <?php 
@@ -299,6 +382,37 @@ ob_start();
                                     if (count($amount_details) > 3) echo ', ...';
                                     ?>
                                 </div>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php 
+                                // Calculate total discount amount for this group
+                                $total_discount = array_sum($payment['discount_amounts']);
+                                if ($total_discount > 0): 
+                                    // Get unique discount types
+                                    $unique_discount_types = array_unique(array_filter($payment['discount_types']));
+                                    $discount_type_names = [
+                                        'birthday' => 'Birthday',
+                                        'staff' => 'Staff', 
+                                        'review' => 'Review',
+                                        'complaint' => 'Complaint'
+                                    ];
+                                ?>
+                                <span class="discount-amount" style="color: #dc3545; font-weight: 600;">
+                                    -RM <?php echo number_format($total_discount, 2); ?>
+                                </span>
+                                <?php if (!empty($unique_discount_types)): ?>
+                                <div class="small text-muted">
+                                    <?php 
+                                    $discount_names = array_map(function($type) use ($discount_type_names) {
+                                        return $discount_type_names[$type] ?? ucfirst($type);
+                                    }, $unique_discount_types);
+                                    echo implode(', ', $discount_names);
+                                    ?>
+                                </div>
+                                <?php endif; ?>
+                                <?php else: ?>
+                                <span class="text-muted">-</span>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -343,10 +457,28 @@ ob_start();
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <span class="cash-received">RM <?php echo number_format($payment['cash_received'], 2); ?></span>
+                                <?php 
+                                // Check if all payments in the group are TNG payments
+                                $all_tng = true;
+                                foreach ($payment['payment_methods'] as $method) {
+                                    if ($method !== 'tng_pay') {
+                                        $all_tng = false;
+                                        break;
+                                    }
+                                }
+                                if ($all_tng): ?>
+                                    <span class="text-muted">N/A</span>
+                                <?php else: ?>
+                                    <span class="cash-received">RM <?php echo number_format($payment['cash_received'], 2); ?></span>
+                                <?php endif; ?>
                             </td>
                             <td>
-                                <span class="change-amount">RM <?php echo number_format($payment['change_amount'], 2); ?></span>
+                                <?php 
+                                if ($all_tng): ?>
+                                    <span class="text-muted">N/A</span>
+                                <?php else: ?>
+                                    <span class="change-amount">RM <?php echo number_format($payment['change_amount'], 2); ?></span>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <?php 

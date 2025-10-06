@@ -1,0 +1,554 @@
+/* Menu Item Forms - Add/Edit Menu Item Styles */
+
+/* Form Card */
+.form-card {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+}
+
+/* Image Upload Card */
+.image-upload-card {
+    border: 2px dashed #dee2e6;
+    border-radius: 15px;
+    padding: 2rem;
+    text-align: center;
+    background: #f8f9fa;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.image-upload-card:hover {
+    border-color: var(--primary-color);
+    background: rgba(67, 97, 238, 0.05);
+}
+
+.preview-image {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 10px;
+    margin-top: 1rem;
+}
+
+.upload-icon {
+    font-size: 3rem;
+    color: #adb5bd;
+    margin-bottom: 1rem;
+}
+
+.upload-text {
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+}
+
+.upload-hint {
+    font-size: 0.875rem;
+    color: #adb5bd;
+}
+
+/* Form Group Title */
+.form-group-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+/* Price Input Styles */
+.price-input {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.price-input:focus {
+    box-shadow: none;
+    border-color: var(--primary-color);
+}
+
+.price-symbol {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+}
+
+/* Form Control Sizes */
+.form-control-lg {
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+}
+
+.form-select-lg {
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+}
+
+.input-group-lg > .form-control {
+    padding: 0.75rem 1rem;
+}
+
+.input-group-lg > .input-group-text {
+    padding: 0.75rem 1.25rem;
+}
+
+/* Button Styles */
+.btn-outline-primary {
+    border-width: 2px;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Image Container */
+.image-container {
+    position: relative;
+    display: inline-block;
+}
+
+.remove-image {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    padding: 0.5rem;
+    cursor: pointer;
+}
+
+.remove-image:hover {
+    background: #fff;
+    color: #dc3545;
+}
+
+/* Input Group Text */
+.input-group-text {
+    background: #f8f9fa;
+    border: 2px solid #E5E7EB;
+    border-right: none;
+    font-weight: 600;
+    color: #4B5563;
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+}
+
+input[name="price"] {
+    border-left: none;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #1F2937;
+}
+
+input[name="price"]:focus {
+    border-left: none;
+    box-shadow: none;
+}
+
+.input-group:focus-within {
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.1);
+}
+
+.input-group:focus-within .input-group-text {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.input-group:focus-within input[name="price"] {
+    border-color: var(--primary);
+}
+
+/* Price Preview Styling */
+.price-preview {
+    font-size: 1.25rem;
+    color: var(--primary);
+    font-weight: 600;
+    margin-top: 0.5rem;
+    display: none;
+}
+
+.price-preview.show {
+    display: block;
+}
+
+.price-input-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.price-input-group .currency-symbol {
+    position: absolute;
+    left: 1rem;
+    color: #6B7280;
+    font-weight: 500;
+    z-index: 2;
+}
+
+.price-input {
+    padding-left: 3rem !important;
+    border: 1px solid #E5E7EB !important;
+    border-radius: 0.5rem !important;
+    height: calc(3rem + 2px) !important;
+    width: 100% !important;
+    font-size: 1rem !important;
+    line-height: 1.5 !important;
+    background-color: #fff !important;
+}
+
+.price-input:focus {
+    border-color: #4F46E5 !important;
+    box-shadow: 0 0 0 0.2rem rgba(79, 70, 229, 0.25) !important;
+    outline: none !important;
+}
+
+.price-validation {
+    display: none;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+.price-validation.invalid {
+    color: #EF4444;
+    display: block;
+}
+
+.price-validation.valid {
+    color: #10B981;
+    display: block;
+}
+
+/* Form Label */
+.form-label {
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
+
+/* Image Preview */
+.image-preview {
+    width: 200px;
+    height: 200px;
+    border-radius: 0.5rem;
+    border: 2px dashed #E5E7EB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1rem;
+    overflow: hidden;
+}
+
+.image-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: cover;
+}
+
+.preview-placeholder {
+    color: #9CA3AF;
+    text-align: center;
+}
+
+.preview-placeholder i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Status Switch - Clean Glassmorphism Design (No Animations) */
+.status-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1.25rem 2rem;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    border-radius: 25px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.status-switch:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 
+        0 12px 40px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.status-switch .form-check-input {
+    width: 0;
+    height: 0;
+    opacity: 0;
+    position: absolute;
+}
+
+.status-switch .form-check-label {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #2d3748;
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    position: relative;
+    z-index: 2;
+}
+
+.status-switch .form-check-label::before {
+    content: '';
+    width: 60px;
+    height: 32px;
+    background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+    border-radius: 16px;
+    position: relative;
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.1),
+        0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.status-switch .form-check-label::after {
+    content: '';
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 2px;
+    transform: translateY(-50%);
+    box-shadow: 
+        0 4px 12px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* Available State */
+.status-switch .form-check-input:checked + .form-check-label {
+    color: #1a202c;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.status-switch .form-check-input:checked + .form-check-label::before {
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.1),
+        0 4px 16px rgba(72, 187, 120, 0.3),
+        0 0 0 4px rgba(72, 187, 120, 0.1);
+    border-color: rgba(72, 187, 120, 0.3);
+}
+
+.status-switch .form-check-input:checked + .form-check-label::after {
+    left: 30px;
+    background: linear-gradient(135deg, #ffffff 0%, #f0fff4 100%);
+    box-shadow: 
+        0 6px 16px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    border-color: rgba(255, 255, 255, 0.8);
+}
+
+/* Icon for Available State */
+.status-switch .form-check-input:checked + .form-check-label::before {
+    content: '✓';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 900;
+    font-size: 0.9rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Unavailable State */
+.status-switch .form-check-input:not(:checked) + .form-check-label::before {
+    content: '✕';
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #718096;
+    font-weight: 900;
+    font-size: 0.9rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Focus State */
+.status-switch .form-check-input:focus + .form-check-label::before {
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.1),
+        0 0 0 4px rgba(66, 153, 225, 0.2);
+}
+
+/* Current Image Text */
+.current-image-text {
+    color: #6c757d;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .form-card {
+        margin-bottom: 1rem;
+    }
+    
+    .image-upload-card {
+        padding: 1.5rem;
+    }
+    
+    .upload-icon {
+        font-size: 2.5rem;
+    }
+    
+    .upload-text {
+        font-size: 1rem;
+    }
+    
+    .form-group-title {
+        font-size: 1rem;
+    }
+    
+    .price-input {
+        font-size: 1.2rem;
+    }
+    
+    .price-input-group .currency-symbol {
+        left: 0.75rem;
+        font-size: 0.9rem;
+    }
+    
+    .price-input {
+        padding-left: 2.5rem !important;
+        font-size: 0.9rem !important;
+    }
+}
+
+@media (max-width: 576px) {
+    .image-upload-card {
+        padding: 1rem;
+    }
+    
+    .upload-icon {
+        font-size: 2rem;
+    }
+    
+    .upload-text {
+        font-size: 0.9rem;
+    }
+    
+    .upload-hint {
+        font-size: 0.8rem;
+    }
+    
+    .form-control-lg,
+    .form-select-lg {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+    }
+    
+    .btn-lg {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .price-input {
+        font-size: 1rem !important;
+        padding-left: 2rem !important;
+    }
+    
+    .price-input-group .currency-symbol {
+        left: 0.5rem;
+        font-size: 0.8rem;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .form-card {
+        background: #1f2937;
+        color: #f9fafb;
+    }
+    
+    .image-upload-card {
+        background: #374151;
+        border-color: #4b5563;
+        color: #f9fafb;
+    }
+    
+    .image-upload-card:hover {
+        background: #4b5563;
+        border-color: var(--primary-color);
+    }
+    
+    .upload-text {
+        color: #d1d5db;
+    }
+    
+    .upload-hint {
+        color: #9ca3af;
+    }
+    
+    .form-label {
+        color: #f3f4f6;
+    }
+    
+    .input-group-text {
+        background: #374151;
+        border-color: #4b5563;
+        color: #d1d5db;
+    }
+    
+    .price-input {
+        background-color: #1f2937 !important;
+        border-color: #4b5563 !important;
+        color: #f9fafb !important;
+    }
+    
+    .price-input:focus {
+        border-color: #4F46E5 !important;
+        box-shadow: 0 0 0 0.2rem rgba(79, 70, 229, 0.25) !important;
+    }
+    
+    .price-input-group .currency-symbol {
+        color: #9ca3af;
+    }
+    
+    .current-image-text {
+        color: #d1d5db;
+    }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+    .form-card {
+        border: 2px solid #000;
+    }
+    
+    .image-upload-card {
+        border: 3px solid #000;
+    }
+    
+    .btn-outline-primary {
+        border-width: 3px;
+    }
+    
+    .price-input {
+        border-width: 2px !important;
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .image-upload-card,
+    .remove-image,
+    .btn-outline-primary {
+        transition: none;
+    }
+    
+    .image-upload-card:hover {
+        transform: none;
+    }
+}

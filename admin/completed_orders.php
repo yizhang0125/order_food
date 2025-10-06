@@ -9,29 +9,12 @@ $db = $database->getConnection();
 $auth = new Auth($db);
 $orderModel = new Order($db);
 
-// Custom rounding function for payment counter
+// Cash rounding function - rounds to nearest 0.05 (5 cents)
 if (!function_exists('customRound')) {
     function customRound($amount) {
-        // Get the decimal part (last 2 digits)
-        $decimal_part = fmod($amount * 100, 100);
-        
-        // Handle rounding rules based on decimal part
-        if ($decimal_part >= 11 && $decimal_part <= 12) {
-            // Round to .10 (e.g., 69.11, 69.12 -> 69.10)
-            return floor($amount) + 0.10;
-        } elseif ($decimal_part >= 13 && $decimal_part <= 14) {
-            // Round to .15 (e.g., 69.13, 69.14 -> 69.15)
-            return floor($amount) + 0.15;
-        } elseif ($decimal_part >= 16 && $decimal_part <= 17) {
-            // Round to .15 (e.g., 69.16, 69.17 -> 69.15)
-            return floor($amount) + 0.15;
-        } elseif ($decimal_part >= 18 && $decimal_part <= 19) {
-            // Round to .20 (e.g., 69.18, 69.19 -> 69.20)
-            return floor($amount) + 0.20;
-        } else {
-            // Standard rounding for other cases
-            return round($amount, 2);
-        }
+        // Round to nearest 0.05 (5 cents) for cash transactions
+        // Multiply by 20, round to nearest integer, then divide by 20
+        return round($amount * 20) / 20;
     }
 }
 

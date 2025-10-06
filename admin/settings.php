@@ -16,9 +16,62 @@ if (!$auth->isLoggedIn()) {
 }
 
 // Check if user has permission to access settings
-if ($_SESSION['user_type'] !== 'admin') {
+if ($_SESSION['user_type'] !== 'admin' && 
+    (!isset($_SESSION['staff_permissions']) || 
+    (!in_array('manage_settings', $_SESSION['staff_permissions']) && 
+     !in_array('all', $_SESSION['staff_permissions'])))) {
     header('Location: dashboard.php?message=' . urlencode('You do not have permission to access Settings') . '&type=warning');
     exit();
+}
+
+// Check specific permissions for different settings sections using database
+$user_type = $_SESSION['user_type'] ?? '';
+$can_manage_discounts = false;
+$can_manage_payments = false;
+$can_manage_tax = false;
+
+if ($user_type === 'admin') {
+    $can_manage_discounts = true;
+    $can_manage_payments = true;
+    $can_manage_tax = true;
+} elseif ($user_type === 'staff' && isset($_SESSION['staff_id'])) {
+    try {
+        // Check discount permissions
+        $discount_query = "SELECT COUNT(*) as has_permission 
+                          FROM staff_permissions sp 
+                          INNER JOIN permissions p ON sp.permission_id = p.id 
+                          WHERE sp.staff_id = ? AND (p.name = 'manage_discounts' OR p.name = 'all')";
+        $discount_stmt = $db->prepare($discount_query);
+        $discount_stmt->execute([$_SESSION['staff_id']]);
+        $discount_result = $discount_stmt->fetch(PDO::FETCH_ASSOC);
+        $can_manage_discounts = $discount_result['has_permission'] > 0;
+        
+        // Check payment permissions
+        $payment_query = "SELECT COUNT(*) as has_permission 
+                         FROM staff_permissions sp 
+                         INNER JOIN permissions p ON sp.permission_id = p.id 
+                         WHERE sp.staff_id = ? AND (p.name = 'manage_payments' OR p.name = 'all')";
+        $payment_stmt = $db->prepare($payment_query);
+        $payment_stmt->execute([$_SESSION['staff_id']]);
+        $payment_result = $payment_stmt->fetch(PDO::FETCH_ASSOC);
+        $can_manage_payments = $payment_result['has_permission'] > 0;
+        
+        // Check tax permissions
+        $tax_query = "SELECT COUNT(*) as has_permission 
+                     FROM staff_permissions sp 
+                     INNER JOIN permissions p ON sp.permission_id = p.id 
+                     WHERE sp.staff_id = ? AND (p.name = 'manage_tax' OR p.name = 'all')";
+        $tax_stmt = $db->prepare($tax_query);
+        $tax_stmt->execute([$_SESSION['staff_id']]);
+        $tax_result = $tax_stmt->fetch(PDO::FETCH_ASSOC);
+        $can_manage_tax = $tax_result['has_permission'] > 0;
+        
+    } catch (Exception $e) {
+        error_log("Error checking settings permissions: " . $e->getMessage());
+        $can_manage_discounts = false;
+        $can_manage_payments = false;
+        $can_manage_tax = false;
+    }
 }
 
 // Handle settings update
@@ -53,26 +106,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'type' => 'string',
                 'description' => 'Last order time'
             ],
-            'tax_rate' => [
-                'value' => $_POST['tax_rate'] ?? 6,
-                'type' => 'number',
-                'description' => 'Tax rate percentage'
-            ],
-            'tax_name' => [
-                'value' => $_POST['tax_name'] ?? 'SST',
-                'type' => 'string',
-                'description' => 'Tax name'
-            ],
-            'currency_symbol' => [
-                'value' => $_POST['currency_symbol'] ?? 'RM',
-                'type' => 'string',
-                'description' => 'Currency symbol'
-            ],
-            'currency_code' => [
-                'value' => $_POST['currency_code'] ?? 'MYR',
-                'type' => 'string',
-                'description' => 'Currency code'
-            ],
+            // Only include tax settings if user has permission
+            ...($can_manage_tax ? [
+                'tax_rate' => [
+                    'value' => $_POST['tax_rate'] ?? 6,
+                    'type' => 'number',
+                    'description' => 'Tax rate percentage'
+                ],
+                'tax_name' => [
+                    'value' => $_POST['tax_name'] ?? 'SST',
+                    'type' => 'string',
+                    'description' => 'Tax name'
+                ],
+                'service_tax_rate' => [
+                    'value' => $_POST['service_tax_rate'] ?? 10,
+                    'type' => 'number',
+                    'description' => 'Service tax rate percentage'
+                ],
+                'service_tax_name' => [
+                    'value' => $_POST['service_tax_name'] ?? 'Service Tax',
+                    'type' => 'string',
+                    'description' => 'Service tax name'
+                ],
+                'currency_symbol' => [
+                    'value' => $_POST['currency_symbol'] ?? 'RM',
+                    'type' => 'string',
+                    'description' => 'Currency symbol'
+                ],
+                'currency_code' => [
+                    'value' => $_POST['currency_code'] ?? 'MYR',
+                    'type' => 'string',
+                    'description' => 'Currency code'
+                ]
+            ] : []),
             'online_ordering' => [
                 'value' => isset($_POST['online_ordering']) ? '1' : '0',
                 'type' => 'boolean',
@@ -88,21 +154,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'type' => 'boolean',
                 'description' => 'Send order notifications'
             ],
-            'cash_payments' => [
-                'value' => isset($_POST['cash_payments']) ? '1' : '0',
-                'type' => 'boolean',
-                'description' => 'Accept cash payments'
-            ],
-            'card_payments' => [
-                'value' => isset($_POST['card_payments']) ? '1' : '0',
-                'type' => 'boolean',
-                'description' => 'Accept card payments'
-            ],
-            'digital_payments' => [
-                'value' => isset($_POST['digital_payments']) ? '1' : '0',
-                'type' => 'boolean',
-                'description' => 'Accept digital payments'
-            ]
+            // Only include payment settings if user has permission
+            ...($can_manage_payments ? [
+                'cash_payments' => [
+                    'value' => isset($_POST['cash_payments']) ? '1' : '0',
+                    'type' => 'boolean',
+                    'description' => 'Accept cash payments'
+                ],
+                'card_payments' => [
+                    'value' => isset($_POST['card_payments']) ? '1' : '0',
+                    'type' => 'boolean',
+                    'description' => 'Accept card payments'
+                ],
+                'digital_payments' => [
+                    'value' => isset($_POST['digital_payments']) ? '1' : '0',
+                    'type' => 'boolean',
+                    'description' => 'Accept digital payments'
+                ]
+            ] : []),
+            // Only include discount settings if user has permission
+            ...($can_manage_discounts ? [
+                'enable_discounts' => [
+                    'value' => isset($_POST['enable_discounts']) ? '1' : '0',
+                    'type' => 'boolean',
+                    'description' => 'Enable discount system'
+                ],
+                'birthday_discount_percent' => [
+                    'value' => $_POST['birthday_discount_percent'] ?? 10,
+                    'type' => 'number',
+                    'description' => 'Birthday discount percentage'
+                ],
+                'staff_discount_percent' => [
+                    'value' => $_POST['staff_discount_percent'] ?? 20,
+                    'type' => 'number',
+                    'description' => 'Staff discount percentage'
+                ],
+                'review_discount_percent' => [
+                    'value' => $_POST['review_discount_percent'] ?? 5,
+                    'type' => 'number',
+                    'description' => 'Review discount percentage'
+                ],
+                'complaint_discount_percent' => [
+                    'value' => $_POST['complaint_discount_percent'] ?? 15,
+                    'type' => 'number',
+                    'description' => 'Complaint resolution discount percentage'
+                ],
+                'max_discount_amount' => [
+                    'value' => $_POST['max_discount_amount'] ?? 50,
+                    'type' => 'number',
+                    'description' => 'Maximum discount amount'
+                ]
+            ] : [])
         ];
         
         if ($systemSettings->updateSettings($settings)) {
@@ -384,6 +486,7 @@ ob_start();
         </div>
 
         <!-- Payment Settings -->
+        <?php if ($can_manage_payments): ?>
         <div class="settings-card">
             <h3 class="card-title">
                 <i class="fas fa-credit-card"></i>
@@ -417,8 +520,10 @@ ob_start();
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
         <!-- Tax & Currency -->
+        <?php if ($can_manage_tax): ?>
         <div class="settings-card">
             <h3 class="card-title">
                 <i class="fas fa-dollar-sign"></i>
@@ -441,11 +546,28 @@ ob_start();
                 </div>
                 <div class="col-md-3">
                     <div class="form-group">
+                        <label class="form-label">Service Tax Rate (%)</label>
+                        <input type="number" class="form-control" name="service_tax_rate" value="<?php echo htmlspecialchars($current_settings['service_tax_rate']['value'] ?? 10); ?>" min="0" max="100" step="0.1">
+                        <div class="form-text">Applied to service charges</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label class="form-label">Service Tax Name</label>
+                        <input type="text" class="form-control" name="service_tax_name" value="<?php echo htmlspecialchars($current_settings['service_tax_name']['value'] ?? 'Service Tax'); ?>">
+                        <div class="form-text">e.g., Service Tax, Service Charge</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
                         <label class="form-label">Currency Symbol</label>
                         <input type="text" class="form-control" name="currency_symbol" value="<?php echo htmlspecialchars($current_settings['currency_symbol']['value'] ?? 'RM'); ?>">
                     </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-6">
                     <div class="form-group">
                         <label class="form-label">Currency Code</label>
                         <input type="text" class="form-control" name="currency_code" value="<?php echo htmlspecialchars($current_settings['currency_code']['value'] ?? 'MYR'); ?>">
@@ -453,6 +575,101 @@ ob_start();
                 </div>
             </div>
         </div>
+        <?php endif; ?>
+
+        <!-- Discount Settings -->
+        <?php if ($can_manage_discounts): ?>
+        <div class="settings-card">
+            <h3 class="card-title">
+                <i class="fas fa-percentage"></i>
+                Discount Settings
+            </h3>
+            
+            <!-- Enable Discounts -->
+            <div class="custom-switch">
+                <div>
+                    <h6 class="switch-label">Enable Discount System</h6>
+                    <p class="switch-description">Allow staff to apply discounts to orders</p>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="enable_discounts" <?php echo ($current_settings['enable_discounts']['value'] ?? true) ? 'checked' : ''; ?>>
+                </div>
+            </div>
+
+            <!-- Discount Types -->
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-birthday-cake text-warning"></i>
+                            Birthday Discount (%)
+                        </label>
+                        <input type="number" class="form-control" name="birthday_discount_percent" value="<?php echo htmlspecialchars($current_settings['birthday_discount_percent']['value'] ?? 10); ?>" min="0" max="100" step="1">
+                        <div class="form-text">Discount for birthday celebrations</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-user-tie text-primary"></i>
+                            Staff Discount (%)
+                        </label>
+                        <input type="number" class="form-control" name="staff_discount_percent" value="<?php echo htmlspecialchars($current_settings['staff_discount_percent']['value'] ?? 20); ?>" min="0" max="100" step="1">
+                        <div class="form-text">Employee discount rate</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-star text-success"></i>
+                            Review Discount (%)
+                        </label>
+                        <input type="number" class="form-control" name="review_discount_percent" value="<?php echo htmlspecialchars($current_settings['review_discount_percent']['value'] ?? 5); ?>" min="0" max="100" step="1">
+                        <div class="form-text">Discount for customer reviews</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-exclamation-triangle text-danger"></i>
+                            Complaint Discount (%)
+                        </label>
+                        <input type="number" class="form-control" name="complaint_discount_percent" value="<?php echo htmlspecialchars($current_settings['complaint_discount_percent']['value'] ?? 15); ?>" min="0" max="100" step="1">
+                        <div class="form-text">Discount for complaint resolution</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Discount Limits -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-shield-alt text-info"></i>
+                            Maximum Discount Amount
+                        </label>
+                        <input type="number" class="form-control" name="max_discount_amount" value="<?php echo htmlspecialchars($current_settings['max_discount_amount']['value'] ?? 50); ?>" min="0" step="0.01">
+                        <div class="form-text">Maximum discount amount in <?php echo htmlspecialchars($current_settings['currency_symbol']['value'] ?? 'RM'); ?></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Discount Information -->
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Discount Guidelines:</strong>
+                <ul class="mb-0 mt-2">
+                    <li><strong>Birthday Discount:</strong> Applied on customer's birthday month</li>
+                    <li><strong>Staff Discount:</strong> For employee meals and purchases</li>
+                    <li><strong>Review Discount:</strong> For customers who leave reviews</li>
+                    <li><strong>Complaint Discount:</strong> For resolving customer complaints</li>
+                </ul>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- Save Button -->
         <div class="text-end mb-4">

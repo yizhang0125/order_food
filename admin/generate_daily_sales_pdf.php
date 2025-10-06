@@ -1,33 +1,24 @@
 <?php
-// Start output buffering to prevent any output before headers
+// Daily Sales PDF Generation using TCPDF with real data
+// Start output buffering to prevent headers already sent errors
 ob_start();
 
-session_start();
+require_once(__DIR__ . '/../vendor/autoload.php');
 require_once(__DIR__ . '/../config/Database.php');
 require_once(__DIR__ . '/../classes/Auth.php');
+require_once(__DIR__ . '/../classes/SystemSettings.php');
 require_once(__DIR__ . '/classes/ReportController.php');
-require_once(__DIR__ . '/../vendor/tecnickcom/tcpdf/tcpdf.php');
 
-// Clear any output buffer
-ob_end_clean();
-
-$database = new Database();
-$db = $database->getConnection();
-$auth = new Auth($db);
-$reportController = new ReportController();
-
-// Check if user is logged in
-if (!$auth->isLoggedIn()) {
-    header('Location: login.php');
-    exit();
+// Start session
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
 }
 
-// Check if user has permission to view reports
-if ($_SESSION['user_type'] !== 'admin' && 
-    (!isset($_SESSION['staff_permissions']) || 
-    (!in_array('view_reports', $_SESSION['staff_permissions']) && 
-     !in_array('all', $_SESSION['staff_permissions'])))) {
-    header('Location: dashboard.php');
+// Check authentication
+if (!isset($_SESSION['user_id'])) {
+    ob_end_clean();
+    http_response_code(401);
+    echo "Unauthorized";
     exit();
 }
 
@@ -35,9 +26,90 @@ if ($_SESSION['user_type'] !== 'admin' &&
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-30 days'));
 
+// Function to round to nearest 0.05 (5 cents) for cash transactions
+function customRound($amount) {
+    return round($amount * 20) / 20;
+}
+
+// Function to recalculate payment amount with service tax
+function recalculatePaymentAmount($item_details, $systemSettings) {
+    if (empty($item_details)) {
+        return 0;
+    }
+    
+    $subtotal = 0;
+    $item_details_array = explode('||', $item_details);
+    
+    foreach ($item_details_array as $item) {
+        if (empty(trim($item))) continue;
+        list($quantity, $price) = explode(':', $item);
+        $subtotal += $quantity * $price;
+    }
+    
+    // Calculate tax and service tax
+    $tax_rate = $systemSettings->getTaxRate();
+    $service_tax_rate = $systemSettings->getServiceTaxRate();
+    $tax_amount = $subtotal * $tax_rate;
+    $service_tax_amount = $subtotal * $service_tax_rate;
+    $total_with_tax = $subtotal + $tax_amount + $service_tax_amount;
+    
+    return customRound($total_with_tax);
+}
+
 try {
-    // Get daily sales data
-    $daily_breakdown = $reportController->getSalesData($start_date, $end_date, 'daily');
+    // Get database connection
+    $database = new Database();
+    $db = $database->getConnection();
+    $systemSettings = new SystemSettings($db);
+    $reportController = new ReportController();
+    
+    // Get real daily sales data
+    $daily_sql = "SELECT 
+                        DATE(p.payment_date) as sale_date,
+                        p.payment_id,
+                        p.amount,
+                        GROUP_CONCAT(CONCAT(oi.quantity, ':', m.price) SEPARATOR '||') as item_details
+                      FROM payments p
+                      JOIN orders o ON p.order_id = o.id
+                      LEFT JOIN order_items oi ON o.id = oi.order_id
+                      LEFT JOIN menu_items m ON oi.menu_item_id = m.id
+                      WHERE p.payment_date BETWEEN ? AND ?
+                      AND p.payment_status = 'completed'
+                      GROUP BY p.payment_id, DATE(p.payment_date)
+                      ORDER BY sale_date";
+    
+    $daily_stmt = $db->prepare($daily_sql);
+    $daily_stmt->execute([$start_date . ' 00:00:00', $end_date . ' 23:59:59']);
+    $raw_daily_data = $daily_stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Process daily data
+    $daily_totals = [];
+    $total_sales = 0;
+    $total_transactions = 0;
+    
+    foreach ($raw_daily_data as $payment) {
+        $sale_date = $payment['sale_date'];
+        
+        if (!isset($daily_totals[$sale_date])) {
+            $daily_totals[$sale_date] = [
+                'sale_date' => $sale_date,
+                'total_sales' => 0,
+                'transaction_count' => 0
+            ];
+        }
+        
+        // Recalculate with service tax
+        $recalculated_amount = recalculatePaymentAmount($payment['item_details'], $systemSettings);
+        
+        $daily_totals[$sale_date]['total_sales'] += $recalculated_amount;
+        $daily_totals[$sale_date]['transaction_count']++;
+        
+        $total_sales += $recalculated_amount;
+        $total_transactions++;
+    }
+    
+    // Convert to array format
+    $daily_breakdown = array_values($daily_totals);
     
     // If no data, create a sample entry
     if (empty($daily_breakdown)) {
@@ -49,6 +121,9 @@ try {
             ]
         ];
     }
+    
+    // Clear output buffer
+    ob_end_clean();
     
     // Generate filename
     $filename = 'Daily_Sales_Breakdown_' . $start_date . '_to_' . $end_date . '.pdf';
@@ -105,12 +180,9 @@ try {
     
     // Table data
     $pdf->SetFont('helvetica', '', 8);
-    $total_sales = 0;
-    $total_transactions = 0;
     $total_tables = 0;
     
     foreach ($daily_breakdown as $day) {
-        $total_sales += $day['total_sales'];
         $total_transactions += $day['transaction_count'];
         
         // Get tables served for this day
@@ -142,7 +214,7 @@ try {
     
     $pdf->Ln(10);
     $pdf->SetFont('helvetica', '', 8);
-    $pdf->Cell(0, 6, 'Generated by Food Ordering System | For questions contact system administrator', 0, 1, 'C');
+    $pdf->Cell(0, 6, 'Generated by Food Ordering System | This report includes all sales with applicable taxes and service charges', 0, 1, 'C');
     
     // Close and output PDF document
     $pdf->Output($filename, 'D'); // 'D' forces download
@@ -158,7 +230,7 @@ try {
     error_log("Daily Sales PDF Generation Trace: " . $e->getTraceAsString());
     
     // Set proper error headers
-    header('Content-Type: text/plain');
+    http_response_code(500);
     echo "Error generating PDF: " . $e->getMessage();
     exit();
 }

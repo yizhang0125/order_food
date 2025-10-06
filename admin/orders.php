@@ -39,9 +39,41 @@ if (isset($_POST['update_status'])) {
 }
 
 try {
-    $orders = $orderModel->getOrders(1, 1000, $search); // Get all orders (limit 1000 to prevent memory issues)
+    // Test database connection first
+    if (!$orderModel->testConnection()) {
+        throw new Exception("Database connection failed");
+    }
+    
+    // Try to get recent orders first - increased limit to show more orders
+    try {
+        $orders = $orderModel->getRecentOrders(null, null, 100);
+        error_log("Retrieved " . count($orders) . " recent orders using getRecentOrders");
+    } catch (Exception $e) {
+        error_log("getRecentOrders failed, trying getSimpleRecentOrders: " . $e->getMessage());
+        try {
+            $orders = $orderModel->getSimpleRecentOrders(100);
+            error_log("Retrieved " . count($orders) . " orders using getSimpleRecentOrders");
+        } catch (Exception $e2) {
+            error_log("getSimpleRecentOrders failed, falling back to getOrders: " . $e2->getMessage());
+            // Final fallback to the working getOrders method
+            $orders = $orderModel->getOrders(1, 100, $search);
+            error_log("Retrieved " . count($orders) . " orders using getOrders fallback");
+        }
+    }
+    
+    // Filter by search if provided (only if not already filtered by getOrders)
+    if (!empty($search) && !isset($orders[0]['items_list'])) {
+        $orders = array_filter($orders, function($order) use ($search) {
+            return stripos($order['id'], $search) !== false || 
+                   stripos($order['table_number'], $search) !== false ||
+                   (isset($order['items_list']) && stripos($order['items_list'], $search) !== false);
+        });
+    }
+    
 } catch (Exception $e) {
-    $error_message = $e->getMessage();
+    $error_message = "Error loading orders: " . $e->getMessage();
+    error_log("Error in admin/orders.php: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
     $orders = [];
 }
 
@@ -53,14 +85,15 @@ ob_start();
 <div class="container-fluid py-4">
     <div class="page-header">
         <h1 class="page-title">
-            <i class="fas fa-shopping-cart"></i>
-            Active Orders
+            <i class="fas fa-clock"></i>
+            Recent Orders
         </h1>
+        <p class="text-muted mt-2">Showing the 100 most recent orders from all statuses</p>
     </div>
 
     <div class="date-filter">
         <form class="date-inputs">
-            <input type="text" class="form-control" name="search" placeholder="Search orders..." 
+            <input type="text" class="form-control" name="search" placeholder="Search recent orders by ID, table, or items..." 
                    value="<?php echo htmlspecialchars($search); ?>">
             <button type="submit" class="filter-btn">
                 <i class="fas fa-search"></i>
@@ -83,6 +116,8 @@ ob_start();
     </div>
     <?php endif; ?>
 
+    
+
     <div class="orders-container">
         <div class="table-responsive">
             <table class="orders-table">
@@ -101,9 +136,9 @@ ob_start();
                 <tbody>
                     <?php if (empty($orders)): ?>
                     <tr>
-                        <td colspan="7" class="text-center py-4">
-                            <i class="fas fa-inbox fa-2x mb-3 text-muted d-block"></i>
-                            No active orders found
+                        <td colspan="8" class="text-center py-4">
+                            <i class="fas fa-clock fa-2x mb-3 text-muted d-block"></i>
+                            No recent orders found
                         </td>
                     </tr>
                     <?php else: ?>
@@ -177,6 +212,8 @@ ob_start();
                                                 <select name="new_status" class="form-select">
                                                     <option value="pending" <?php echo $order['status'] == 'pending' ? 'selected' : ''; ?>>Pending</option>
                                                     <option value="processing" <?php echo $order['status'] == 'processing' ? 'selected' : ''; ?>>Processing</option>
+                                                    <option value="completed" <?php echo $order['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                                    <option value="cancelled" <?php echo $order['status'] == 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -323,6 +360,16 @@ ob_start();
 .status-badge.processing {
     background: rgba(59, 130, 246, 0.1);
     color: var(--info);
+}
+
+.status-badge.completed {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.status-badge.cancelled {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
 }
 
 .order-amount {

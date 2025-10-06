@@ -117,6 +117,18 @@
     margin: 0;
 }
 
+.summary-info small {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    font-weight: 500;
+    margin-top: 0.25rem;
+    display: block;
+}
+
+.highlight-card .summary-info small {
+    color: rgba(255, 255, 255, 0.8);
+}
+
 .report-section {
     background: white;
     border-radius: 16px;

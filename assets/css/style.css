@@ -14,34 +14,7 @@ body {
     color: var(--text-color);
 }
 
-/* Navbar Styles */
-.navbar {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    padding: 1rem 0;
-    top: 0 !important;
-    z-index: 1030;
-    height: auto;
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.navbar.nav-up {
-    transform: translateY(-100%);
-}
-
-.navbar-brand {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--primary-color) !important;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.navbar-brand i {
-    font-size: 1.8rem;
-}
+/* Navbar styles moved to navbar.css */
 
 /* Category Navigation */
 .category-nav {
@@ -165,17 +138,12 @@ body {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
+    min-height: 500px; /* Set minimum height for consistency */
 }
 
 .menu-item-card:hover {
     transform: translateY(-5px);
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-}
-
-.menu-item-image {
-    position: relative;
-    overflow: hidden;
-    width: 100%;
 }
 
 .menu-item-image img {
@@ -293,6 +261,45 @@ body {
     animation: shimmer 1.5s linear infinite;
 }
 
+/* Lazy loading styles */
+.lazy-load {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.lazy-load.loaded {
+    opacity: 1;
+}
+
+.menu-item-image {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    background: #f3f4f6;
+}
+
+.menu-item-image::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(110deg, #ececec 8%, #f5f5f5 18%, #ececec 33%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s linear infinite;
+    z-index: 1;
+}
+
+.menu-item-image img.loaded {
+    position: relative;
+    z-index: 2;
+}
+
+.menu-item-image img.loaded + .menu-item-image::before {
+    display: none;
+}
+
 /* Enhanced hover effects */
 .menu-item-card:hover .menu-item-image img {
     transform: scale(1.1) translateY(-2%);
@@ -317,6 +324,9 @@ body {
 
 .card-body {
     padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1; /* Allow card body to grow and fill available space */
 }
 
 .menu-item-title {
@@ -331,6 +341,9 @@ body {
     font-size: 0.95rem;
     margin-bottom: 1rem;
     line-height: 1.5;
+    flex-grow: 1; /* Allow description to grow and fill space */
+    display: flex;
+    align-items: flex-start;
 }
 
 .menu-item-price {
@@ -356,6 +369,7 @@ body {
     cursor: pointer;
     transition: all 0.3s ease;
     box-shadow: 0 2px 8px rgba(67, 97, 238, 0.3);
+    margin-top: auto; /* Push button to bottom of card */
 }
 
 .order-button i {
@@ -388,9 +402,19 @@ body {
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
+    .menu-item-card {
+        min-height: 450px; /* Slightly smaller for mobile */
+    }
+    
     .order-button {
         padding: 10px 20px;
         font-size: 0.95rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .menu-item-card {
+        min-height: 400px; /* Even smaller for small mobile */
     }
 }
 
@@ -400,54 +424,7 @@ body {
     display: none;
 }
 
-/* Table Info Banner Styles */
-.table-info-banner {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.8));
-    backdrop-filter: blur(10px);
-    padding: 8px 16px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    margin: 0 15px;
-    transition: all 0.3s ease;
-}
-
-.table-info-banner:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
-}
-
-.table-info-banner .table-number {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--primary-color);
-    letter-spacing: 0.5px;
-}
-
-/* View Orders Button Styles */
-.view-orders-btn {
-    background: var(--primary-color);
-    color: white;
-    padding: 0.5rem 1.25rem;
-    border-radius: 50px;
-    font-weight: 500;
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: all 0.3s ease;
-    border: none;
-}
-
-.view-orders-btn:hover {
-    background: var(--secondary-color);
-    transform: translateY(-2px);
-    color: white;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.view-orders-btn i {
-    font-size: 1rem;
-}
+/* Table info banner and view orders button styles moved to navbar.css */
 
 /* Animation Classes */
 .fade-in {
@@ -593,19 +570,7 @@ body {
         font-size: 1rem;
     }
 
-    .view-orders-btn {
-        padding: 0.4rem 1rem;
-        font-size: 0.9rem;
-    }
-
-    .table-info-banner {
-        margin: 0 10px;
-        padding: 6px 12px;
-    }
-
-    .table-info-banner .table-number {
-        font-size: 14px;
-    }
+    /* View orders button and table info banner styles moved to navbar.css */
 
     .floating-cart {
         bottom: 1rem;
@@ -640,14 +605,7 @@ body {
         font-size: 0.8rem;
     }
 
-    .table-info-banner {
-        margin: 0 8px;
-        padding: 4px 10px;
-    }
-
-    .table-info-banner .table-number {
-        font-size: 13px;
-    }
+    /* Table info banner styles moved to navbar.css */
 
     .cart-badge {
         width: 20px;

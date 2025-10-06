@@ -11,29 +11,12 @@ $auth = new Auth($db);
 $orderModel = new Order($db);
 $systemSettings = new SystemSettings($db);
 
-// Custom rounding function for payment counter
+// Cash rounding function - rounds to nearest 0.05 (5 cents)
 if (!function_exists('customRound')) {
     function customRound($amount) {
-        // Get the decimal part (last 2 digits)
-        $decimal_part = fmod($amount * 100, 100);
-        
-        // Handle rounding rules based on decimal part
-        if ($decimal_part >= 11 && $decimal_part <= 12) {
-            // Round to .10 (e.g., 69.11, 69.12 -> 69.10)
-            return floor($amount) + 0.10;
-        } elseif ($decimal_part >= 13 && $decimal_part <= 14) {
-            // Round to .15 (e.g., 69.13, 69.14 -> 69.15)
-            return floor($amount) + 0.15;
-        } elseif ($decimal_part >= 16 && $decimal_part <= 17) {
-            // Round to .15 (e.g., 69.16, 69.17 -> 69.15)
-            return floor($amount) + 0.15;
-        } elseif ($decimal_part >= 18 && $decimal_part <= 19) {
-            // Round to .20 (e.g., 69.18, 69.19 -> 69.20)
-            return floor($amount) + 0.20;
-        } else {
-            // Standard rounding for other cases
-            return round($amount, 2);
-        }
+        // Round to nearest 0.05 (5 cents) for cash transactions
+        // Multiply by 20, round to nearest integer, then divide by 20
+        return round($amount * 20) / 20;
     }
 }
 
@@ -43,85 +26,137 @@ if (!$auth->isLoggedIn()) {
     exit();
 }
 
+// Check if user has permission to view orders
+if ($_SESSION['user_type'] !== 'admin' && 
+    (!isset($_SESSION['staff_permissions']) || 
+    (!in_array('view_orders', $_SESSION['staff_permissions']) && 
+     !in_array('all', $_SESSION['staff_permissions'])))) {
+    header('Location: dashboard.php?message=' . urlencode('You do not have permission to access Order Details') . '&type=warning');
+    exit();
+}
+
 // Get order ID from URL
-$order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$order_id = isset($_GET['id']) ? intval($_GET['id']) : null;
+
+if (!$order_id) {
+    header('Location: completed_orders.php?message=' . urlencode('Invalid order ID') . '&type=error');
+    exit();
+}
 
 // Get order details
 $order = $orderModel->getOrder($order_id);
 
-// Redirect if order not found
 if (!$order) {
-    header('Location: completed_orders.php');
+    header('Location: completed_orders.php?message=' . urlencode('Order not found') . '&type=error');
     exit();
 }
 
+// Get payment details for this order
+$payment_sql = "SELECT * FROM payments WHERE order_id = ? AND payment_status = 'completed'";
+$payment_stmt = $db->prepare($payment_sql);
+$payment_stmt->execute([$order_id]);
+$payment = $payment_stmt->fetch(PDO::FETCH_ASSOC);
+
 // Set page title
-$page_title = "Order #" . str_pad($order_id, 4, '0', STR_PAD_LEFT);
+$page_title = "Order Details - #" . str_pad($order_id, 4, '0', STR_PAD_LEFT);
 
 // Start output buffering
 ob_start();
-
-$status_colors = [
-    'pending' => 'warning',
-    'processing' => 'info',
-    'completed' => 'success',
-    'cancelled' => 'danger'
-];
 ?>
 
+<!-- Page content -->
 <div class="container-fluid py-4">
-    <!-- Back button and header -->
-    <div class="d-flex align-items-center mb-4">
-        <a href="completed_orders.php" class="btn btn-link text-muted p-0 me-3">
-            <i class="fas fa-arrow-left"></i>
-        </a>
-        <h1 class="page-title mb-0">
-            Order Details #<?php echo str_pad($order_id, 4, '0', STR_PAD_LEFT); ?>
-        </h1>
+    <div class="page-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1 class="page-title">
+                <i class="fas fa-receipt"></i>
+                Order Details
+            </h1>
+            <div class="header-actions">
+                <a href="completed_orders.php" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i>
+                    Back to Orders
+                </a>
+                <button class="btn btn-primary" onclick="printOrder()">
+                    <i class="fas fa-print"></i>
+                    Print Receipt
+                </button>
+            </div>
+        </div>
     </div>
 
     <div class="row">
-        <!-- Order Summary Card -->
-        <div class="col-12 col-lg-4 mb-4">
-            <div class="card order-summary">
+        <div class="col-lg-8">
+            <!-- Order Information -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle"></i>
+                        Order Information
+                    </h5>
+                </div>
                 <div class="card-body">
-                    <h5 class="card-title">Order Summary</h5>
-                    <div class="summary-item">
-                        <span class="label">Status</span>
-                        <span class="status-badge <?php echo strtolower($order['status']); ?>">
-                            <i class="fas fa-<?php echo $order['status'] === 'cancelled' ? 'times' : 'check'; ?>-circle"></i>
-                            <?php echo ucfirst($order['status']); ?>
-                        </span>
-                    </div>
-                    <div class="summary-item">
-                        <span class="label">Table Number</span>
-                        <span class="value">Table <?php echo htmlspecialchars($order['table_number']); ?></span>
-                    </div>
-                    <div class="summary-item">
-                        <span class="label">Order Date</span>
-                        <span class="value"><?php echo date('d M Y, h:i A', strtotime($order['created_at'])); ?></span>
-                    </div>
-                    <div class="summary-item">
-                        <span class="label">Total Amount</span>
-                        <span class="value amount"><?php echo $systemSettings->getCurrencySymbol(); ?> <?php echo number_format(customRound($order['total_amount']), 2); ?></span>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="info-item">
+                                <label>Order ID:</label>
+                                <span class="order-id">#<?php echo str_pad($order['id'], 4, '0', STR_PAD_LEFT); ?></span>
+                            </div>
+                            <div class="info-item">
+                                <label>Table Number:</label>
+                                <span>Table <?php echo htmlspecialchars($order['table_number']); ?></span>
+                            </div>
+                            <div class="info-item">
+                                <label>Order Status:</label>
+                                <span class="status-badge <?php echo strtolower($order['status']); ?>">
+                                    <i class="fas fa-<?php echo $order['status'] == 'completed' ? 'check-circle' : ($order['status'] == 'processing' ? 'clock' : 'times-circle'); ?>"></i>
+                                    <?php echo ucfirst($order['status']); ?>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-item">
+                                <label>Order Date:</label>
+                                <span><?php echo date('d M Y, h:i A', strtotime($order['created_at'])); ?></span>
+                            </div>
+                            <?php if (isset($order['updated_at']) && $order['updated_at'] && $order['updated_at'] != $order['created_at']): ?>
+                            <div class="info-item">
+                                <label>Last Updated:</label>
+                                <span><?php echo date('d M Y, h:i A', strtotime($order['updated_at'])); ?></span>
+                            </div>
+                            <?php endif; ?>
+                            <?php if ($payment): ?>
+                            <div class="info-item">
+                                <label>Payment Method:</label>
+                                <span class="payment-method <?php echo strtolower($payment['payment_method']); ?>">
+                                    <i class="fas fa-<?php echo $payment['payment_method'] == 'cash' ? 'money-bill' : ($payment['payment_method'] == 'card' ? 'credit-card' : 'mobile'); ?>"></i>
+                                    <?php echo ucfirst($payment['payment_method']); ?>
+                                </span>
+                            </div>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Order Items Card -->
-        <div class="col-12 col-lg-8 mb-4">
-            <div class="card order-items">
+            <!-- Order Items -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-list"></i>
+                        Order Items
+                    </h5>
+                </div>
                 <div class="card-body">
-                    <h5 class="card-title">Order Items</h5>
                     <div class="table-responsive">
-                        <table class="table items-table">
+                        <table class="table table-hover">
                             <thead>
                                 <tr>
                                     <th>Item</th>
-                                    <th class="text-center">Quantity</th>
-                                    <th class="text-end">Price</th>
-                                    <th class="text-end">Total</th>
+                                    <th>Quantity</th>
+                                    <th>Unit Price</th>
+                                    <th>Total</th>
+                                    <th>Special Instructions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -134,54 +169,140 @@ $status_colors = [
                                 <tr>
                                     <td>
                                         <div class="item-info">
-                                            <div class="item-image">
-                                                <?php if (!empty($item['image_path'])): 
-                                                    $image_path = str_replace('uploads/menu_items/', '', $item['image_path']);
-                                                ?>
-                                                <img src="../uploads/menu_items/<?php echo htmlspecialchars($image_path); ?>" 
-                                                     alt="<?php echo htmlspecialchars($item['name']); ?>">
-                                                <?php else: ?>
-                                                <i class="fas fa-utensils"></i>
-                                                <?php endif; ?>
-                                            </div>
-                                            <div class="item-details">
-                                                <div class="item-name"><?php echo htmlspecialchars($item['name']); ?></div>
-                                            </div>
+                                            <strong><?php echo htmlspecialchars($item['name']); ?></strong>
                                         </div>
                                     </td>
-                                    <td class="text-center"><?php echo $item['quantity']; ?></td>
-                                    <td class="text-end"><?php echo $systemSettings->getCurrencySymbol(); ?> <?php echo number_format($item['price'], 2); ?></td>
-                                    <td class="text-end"><?php echo $systemSettings->getCurrencySymbol(); ?> <?php echo number_format($item_total, 2); ?></td>
+                                    <td>
+                                        <span class="quantity-badge">
+                                            <?php echo $item['quantity']; ?>
+                                        </span>
+                                    </td>
+                                    <td>RM <?php echo number_format($item['price'], 2); ?></td>
+                                    <td>
+                                        <span class="item-total">
+                                            RM <?php echo number_format($item_total, 2); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($item['instructions'])): ?>
+                                            <div class="special-instructions">
+                                                <i class="fas fa-comment-alt"></i>
+                                                <?php echo htmlspecialchars($item['instructions']); ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <span class="text-muted">No special instructions</span>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
-                            <tfoot>
-                                <?php
-                                // Calculate tax and total using dynamic settings
-                                $tax_rate = $systemSettings->getTaxRate();
-                                $tax_amount = $subtotal * $tax_rate;
-                                $total_with_tax = $subtotal + $tax_amount;
-                                $tax_name = $systemSettings->getTaxName();
-                                $tax_percent = $systemSettings->getTaxRatePercent();
-                                $currency_symbol = $systemSettings->getCurrencySymbol();
-                                
-                                // Apply custom rounding to total
-                                $total_with_tax = customRound($total_with_tax);
-                                ?>
-                                <tr>
-                                    <td colspan="3" class="text-end">Subtotal:</td>
-                                    <td class="text-end"><?php echo $currency_symbol; ?> <?php echo number_format($subtotal, 2); ?></td>
-                                </tr>
-                                <tr>
-                                    <td colspan="3" class="text-end"><?php echo $tax_name; ?> (<?php echo $tax_percent; ?>%):</td>
-                                    <td class="text-end"><?php echo $currency_symbol; ?> <?php echo number_format($tax_amount, 2); ?></td>
-                                </tr>
-                                <tr>
-                                    <td colspan="3" class="text-end fw-bold">Total Amount:</td>
-                                    <td class="text-end fw-bold"><?php echo $currency_symbol; ?> <?php echo number_format($total_with_tax, 2); ?></td>
-                                </tr>
-                            </tfoot>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <!-- Order Summary -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-calculator"></i>
+                        Order Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="summary-item">
+                        <span>Subtotal:</span>
+                        <span>RM <?php echo number_format($subtotal, 2); ?></span>
+                    </div>
+                    <?php 
+                    // Calculate tax using dynamic tax rate
+                    $tax_rate = $systemSettings->getTaxRate();
+                    $tax_amount = $subtotal * $tax_rate;
+                    $tax_name = $systemSettings->getTaxName();
+                    $tax_percent = $systemSettings->getTaxRatePercent();
+                    $currency_symbol = $systemSettings->getCurrencySymbol();
+                    ?>
+                    <div class="summary-item">
+                        <span><?php echo $tax_name; ?> (<?php echo $tax_percent; ?>%):</span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($tax_amount, 2); ?></span>
+                    </div>
+                    <div class="summary-total">
+                        <span>Total:</span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format(customRound($subtotal + $tax_amount), 2); ?></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Information -->
+            <?php if ($payment): ?>
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-credit-card"></i>
+                        Payment Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="info-item">
+                        <label>Payment Status:</label>
+                        <span class="payment-status <?php echo strtolower($payment['payment_status']); ?>">
+                            <i class="fas fa-<?php echo $payment['payment_status'] == 'completed' ? 'check-circle' : 'clock'; ?>"></i>
+                            <?php echo ucfirst($payment['payment_status']); ?>
+                        </span>
+                    </div>
+                    <div class="info-item">
+                        <label>Payment Method:</label>
+                        <span class="payment-method <?php echo strtolower($payment['payment_method']); ?>">
+                            <i class="fas fa-<?php echo $payment['payment_method'] == 'cash' ? 'money-bill' : ($payment['payment_method'] == 'card' ? 'credit-card' : 'mobile'); ?>"></i>
+                            <?php echo ucfirst($payment['payment_method']); ?>
+                        </span>
+                    </div>
+                    <div class="info-item">
+                        <label>Amount Paid:</label>
+                        <span class="payment-amount">
+                            <?php echo $currency_symbol; ?> <?php echo number_format(customRound($payment['amount']), 2); ?>
+                        </span>
+                    </div>
+                    <div class="info-item">
+                        <label>Payment Date:</label>
+                        <span><?php echo date('d M Y, h:i A', strtotime($payment['payment_date'])); ?></span>
+                    </div>
+                    <?php if (!empty($payment['notes'])): ?>
+                    <div class="info-item">
+                        <label>Payment Notes:</label>
+                        <span><?php echo htmlspecialchars($payment['notes']); ?></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Actions -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-cogs"></i>
+                        Actions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary" onclick="printOrder()">
+                            <i class="fas fa-print"></i>
+                            Print Receipt
+                        </button>
+                        <a href="completed_orders.php" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left"></i>
+                            Back to Orders
+                        </a>
+                        <?php if ($order['status'] == 'completed'): ?>
+                        <button class="btn btn-outline-info" onclick="viewOrderHistory()">
+                            <i class="fas fa-history"></i>
+                            View Order History
+                        </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -200,7 +321,6 @@ $extra_css = '
         --success: #10b981;
         --warning: #f59e0b;
         --danger: #ef4444;
-        --info: #3b82f6;
         --gray-50: #f9fafb;
         --gray-100: #f3f4f6;
         --gray-200: #e5e7eb;
@@ -212,51 +332,90 @@ $extra_css = '
         --gray-800: #1f2937;
     }
 
+    .page-header {
+        background: white;
+        padding: 2rem;
+        border-radius: 16px;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
     .page-title {
         font-size: 1.75rem;
         font-weight: 700;
         color: var(--gray-800);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .page-title i {
+        color: var(--primary);
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
     }
 
     .card {
         border: none;
         border-radius: 16px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        background: white;
-    }
-
-    .card-title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: var(--gray-800);
         margin-bottom: 1.5rem;
     }
 
-    .summary-item {
+    .card-header {
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--gray-200);
+        border-radius: 16px 16px 0 0 !important;
+        padding: 1.25rem;
+    }
+
+    .card-title {
+        font-weight: 600;
+        color: var(--gray-800);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .card-title i {
+        color: var(--primary);
+    }
+
+    .card-body {
+        padding: 1.5rem;
+    }
+
+    .info-item {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1rem 0;
-        border-bottom: 1px solid var(--gray-200);
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--gray-100);
     }
 
-    .summary-item:last-child {
+    .info-item:last-child {
         border-bottom: none;
     }
 
-    .summary-item .label {
-        color: var(--gray-600);
+    .info-item label {
         font-weight: 500;
+        color: var(--gray-600);
+        margin: 0;
     }
 
-    .summary-item .value {
-        color: var(--gray-800);
+    .info-item span {
         font-weight: 600;
+        color: var(--gray-800);
     }
 
-    .summary-item .amount {
-        font-size: 1.1rem;
+    .order-id {
         color: var(--primary);
+        font-size: 1.1rem;
     }
 
     .status-badge {
@@ -274,111 +433,343 @@ $extra_css = '
         color: var(--success);
     }
 
-    .status-badge.cancelled {
-        background: rgba(239, 68, 68, 0.1);
-        color: var(--danger);
-        font-weight: 600;
-    }
-
-    .status-badge.pending {
+    .status-badge.processing {
         background: rgba(245, 158, 11, 0.1);
         color: var(--warning);
     }
 
-    .status-badge.processing {
-        background: rgba(59, 130, 246, 0.1);
-        color: var(--info);
+    .status-badge.cancelled {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--danger);
     }
 
-    .items-table {
-        margin: 0;
+    .payment-method {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: 500;
+        font-size: 0.875rem;
     }
 
-    .items-table th {
+    .payment-method.cash {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+    }
+
+    .payment-method.card {
+        background: rgba(79, 70, 229, 0.1);
+        color: var(--primary);
+    }
+
+    .payment-method.tng {
+        background: rgba(245, 158, 11, 0.1);
+        color: var(--warning);
+    }
+
+    .payment-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: 500;
+        font-size: 0.875rem;
+    }
+
+    .payment-status.completed {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+    }
+
+    .payment-status.pending {
+        background: rgba(245, 158, 11, 0.1);
+        color: var(--warning);
+    }
+
+    .quantity-badge {
+        background: var(--primary);
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-weight: 500;
+        font-size: 0.875rem;
+    }
+
+    .item-total {
+        font-weight: 600;
+        color: var(--gray-800);
+    }
+
+    .special-instructions {
+        background: rgba(79, 70, 229, 0.1);
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        color: var(--gray-700);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .special-instructions i {
+        color: var(--primary);
+    }
+
+    .summary-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--gray-100);
+    }
+
+    .summary-item:last-child {
+        border-bottom: none;
+    }
+
+    .summary-total {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 0;
+        border-top: 2px solid var(--gray-200);
+        margin-top: 0.5rem;
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--gray-800);
+    }
+
+    .payment-amount {
+        font-weight: 700;
+        color: var(--success);
+        font-size: 1.1rem;
+    }
+
+    .table th {
         background: var(--gray-50);
-        padding: 1rem;
+        border-top: none;
         font-weight: 600;
         color: var(--gray-600);
-        font-size: 0.875rem;
         text-transform: uppercase;
+        font-size: 0.85rem;
         letter-spacing: 0.05em;
     }
 
-    .items-table td {
-        padding: 1rem;
+    .table td {
+        border-top: 1px solid var(--gray-100);
         vertical-align: middle;
     }
 
-    .item-info {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .item-image {
-        width: 80px;
-        height: 80px;
-        border-radius: 12px;
-        background: var(--gray-100);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: 1rem;
-        overflow: hidden;
-    }
-
-    .item-image img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 8px;
-    }
-
-    .item-image i {
-        font-size: 2rem;
-        color: var(--gray-500);
-    }
-
-    .item-name {
-        font-weight: 500;
+    .item-info strong {
         color: var(--gray-800);
-        margin-bottom: 0.25rem;
-    }
-
-    .btn-link {
-        text-decoration: none;
-        font-weight: 500;
-        transition: all 0.3s ease;
-    }
-
-    .btn-link:hover {
-        transform: translateX(-5px);
     }
 
     @media (max-width: 768px) {
-        .items-table {
-            white-space: nowrap;
+        .page-header {
+            padding: 1.5rem;
         }
-        
-        .item-image {
-            width: 40px;
-            height: 40px;
+
+        .header-actions {
+            flex-direction: column;
+            width: 100%;
+            margin-top: 1rem;
         }
-    }
 
-    tfoot tr:not(:last-child) td {
-        padding: 0.75rem 1rem;
-        color: var(--gray-600);
-    }
+        .header-actions .btn {
+            width: 100%;
+        }
 
-    tfoot tr:last-child td {
-        padding: 1rem;
-        font-size: 1.1rem;
-        border-top: 2px solid var(--gray-200);
-        color: var(--gray-800);
+        .info-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.25rem;
+        }
     }
 </style>';
 
+// Add custom JavaScript
+$extra_js = '
+<script>
+    function printOrder() {
+        // Create a new window for printing
+        const printWindow = window.open("", "_blank", "width=800,height=600");
+        
+        const orderData = {
+            id: "' . $order['id'] . '",
+            table: "' . $order['table_number'] . '",
+            date: "' . date('d M Y, h:i A', strtotime($order['created_at'])) . '",
+            status: "' . $order['status'] . '",
+            items: ' . json_encode($order['items']) . ',
+            subtotal: ' . $subtotal . ',
+            tax: ' . $tax_amount . ',
+            total: ' . customRound($subtotal + $tax_amount) . ',
+            payment: ' . json_encode($payment) . '
+        };
+        
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Order Receipt - #${orderData.id}</title>
+                <style>
+                    body { 
+                        font-family: "Arial", sans-serif; 
+                        font-size: 14px; 
+                        margin: 0; 
+                        padding: 20px; 
+                        background: white;
+                    }
+                    .receipt-header { 
+                        text-align: center; 
+                        margin-bottom: 20px; 
+                        border-bottom: 2px solid #000; 
+                        padding-bottom: 15px; 
+                    }
+                    .receipt-header h1 { 
+                        font-size: 24px; 
+                        margin: 0 0 10px 0; 
+                        font-weight: bold; 
+                        text-transform: uppercase;
+                    }
+                    .receipt-info { 
+                        margin-bottom: 20px; 
+                        display: flex;
+                        justify-content: space-between;
+                    }
+                    .receipt-info div { 
+                        flex: 1;
+                    }
+                    .receipt-info p { 
+                        margin: 5px 0; 
+                        font-weight: bold;
+                    }
+                    .items-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 20px;
+                    }
+                    .items-table th,
+                    .items-table td {
+                        border: 1px solid #000;
+                        padding: 8px;
+                        text-align: left;
+                    }
+                    .items-table th {
+                        background: #f0f0f0;
+                        font-weight: bold;
+                    }
+                    .receipt-summary {
+                        border-top: 2px solid #000;
+                        padding-top: 15px;
+                        margin-top: 20px;
+                    }
+                    .summary-row {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-bottom: 5px;
+                    }
+                    .summary-total {
+                        font-weight: bold;
+                        font-size: 16px;
+                        border-top: 1px solid #000;
+                        padding-top: 10px;
+                        margin-top: 10px;
+                    }
+                    .receipt-footer { 
+                        margin-top: 30px; 
+                        border-top: 2px solid #000; 
+                        padding-top: 15px; 
+                        text-align: center; 
+                        font-weight: bold;
+                    }
+                    @media print {
+                        body { margin: 0; padding: 10px; }
+                        @page { margin: 0.5in; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="receipt-header">
+                    <h1>ORDER RECEIPT</h1>
+                    <p>Gourmet Delights Restaurant</p>
+                </div>
+                
+                <div class="receipt-info">
+                    <div>
+                        <p>Order ID: #${orderData.id.toString().padStart(4, "0")}</p>
+                        <p>Table: ${orderData.table}</p>
+                        <p>Date: ${orderData.date}</p>
+                    </div>
+                    <div>
+                        <p>Status: ${orderData.status.toUpperCase()}</p>
+                        ${orderData.payment ? `<p>Payment: ${orderData.payment.payment_method.toUpperCase()}</p>` : ""}
+                    </div>
+                </div>
+                
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Qty</th>
+                            <th>Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${orderData.items.map(item => `
+                            <tr>
+                                <td>${item.name}</td>
+                                <td>${item.quantity}</td>
+                                <td>RM ${parseFloat(item.price).toFixed(2)}</td>
+                                <td>RM ${(parseFloat(item.price) * item.quantity).toFixed(2)}</td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+                
+                <div class="receipt-summary">
+                    <div class="summary-row">
+                        <span>Subtotal:</span>
+                        <span>RM ${orderData.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>SST (6%):</span>
+                        <span>RM ${orderData.tax.toFixed(2)}</span>
+                    </div>
+                    <div class="summary-row summary-total">
+                        <span>Total:</span>
+                        <span>RM ${orderData.total.toFixed(2)}</span>
+                    </div>
+                </div>
+                
+                <div class="receipt-footer">
+                    <p>Thank you for your order!</p>
+                    <p>Generated on ${new Date().toLocaleDateString()}</p>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        
+        // Wait for content to load, then print
+        printWindow.onload = function() {
+            setTimeout(function() {
+                printWindow.print();
+                printWindow.close();
+            }, 500);
+        };
+    }
+    
+    function viewOrderHistory() {
+        // This could be expanded to show order status changes
+        alert("Order history feature coming soon!");
+    }
+</script>';
+
 // Include the layout
 include 'includes/layout.php';
-?> 
+?>

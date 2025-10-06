@@ -135,5 +135,50 @@ class Cart {
         }
         return 'RM'; // Fallback
     }
+    
+    /**
+     * Calculate service tax amount using admin settings
+     */
+    public function calculateServiceTax($menuItemModel) {
+        $subtotal = $this->calculateSubtotal($menuItemModel);
+        
+        if ($this->systemSettings) {
+            $serviceTaxRate = $this->systemSettings->getServiceTaxRate();
+            return $subtotal * $serviceTaxRate;
+        }
+        
+        // Fallback to 10% if system settings not available
+        return $subtotal * 0.10;
+    }
+    
+    /**
+     * Calculate total with both tax and service tax using admin settings
+     */
+    public function calculateTotalWithAllTaxes($menuItemModel) {
+        $subtotal = $this->calculateSubtotal($menuItemModel);
+        $tax = $this->calculateTax($menuItemModel);
+        $serviceTax = $this->calculateServiceTax($menuItemModel);
+        return $subtotal + $tax + $serviceTax;
+    }
+    
+    /**
+     * Get service tax name from admin settings
+     */
+    public function getServiceTaxName() {
+        if ($this->systemSettings) {
+            return $this->systemSettings->getServiceTaxName();
+        }
+        return 'Service Tax'; // Fallback
+    }
+    
+    /**
+     * Get service tax rate percentage from admin settings
+     */
+    public function getServiceTaxRatePercent() {
+        if ($this->systemSettings) {
+            return $this->systemSettings->getServiceTaxRatePercent();
+        }
+        return 10; // Fallback
+    }
 }
 ?> 

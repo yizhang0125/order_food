@@ -2,10 +2,12 @@
 session_start();
 require_once(__DIR__ . '/../config/Database.php');
 require_once(__DIR__ . '/../classes/Auth.php');
+require_once(__DIR__ . '/classes/ReportController.php');
 
 $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
+$reportController = new ReportController();
 
 // Check if user is logged in
 if (!$auth->isLoggedIn()) {
@@ -26,7 +28,7 @@ $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 
 // Set filename and headers for CSV download
 $filename = $report_type . '_' . $start_date . '_to_' . $end_date . '.csv';
-header('Content-Type: text/csv');
+header('Content-Type: text/csv; charset=UTF-8');
 header('Content-Disposition: attachment; filename="' . $filename . '"');
 
 // Create output stream
@@ -55,10 +57,30 @@ try {
             
             // Write data rows
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $rounded_total = $reportController->customRound(floatval($row['daily_total']));
+                
+                // Handle date formatting properly for Excel compatibility
+                $sale_date = $row['sale_date'];
+                if (empty($sale_date) || $sale_date === null) {
+                    $formatted_date = 'N/A';
+                } else {
+                    // Ensure we have a valid date and format it properly
+                    $timestamp = strtotime($sale_date);
+                    if ($timestamp === false) {
+                        $formatted_date = 'Invalid Date';
+                    } else {
+                        // Use a readable date format: Month Day, Year (e.g., "September 17, 2025")
+                        $formatted_date = date('F j, Y', $timestamp);
+                    }
+                }
+                
+                // Add a tab character before the date to prevent Excel from treating it as a formula
+                $safe_date = "\t" . $formatted_date;
+                
                 fputcsv($output, [
-                    date('Y-m-d', strtotime($row['sale_date'])),
+                    $safe_date,
                     $row['transaction_count'],
-                    number_format($row['daily_total'], 2, '.', '')
+                    number_format($rounded_total, 2, '.', '')
                 ]);
             }
             break;
@@ -85,12 +107,13 @@ try {
             
             // Write data rows
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $rounded_total = $reportController->customRound(floatval($row['weekly_total']));
                 fputcsv($output, [
                     'Week ' . date('W, Y', strtotime($row['week_start'])),
-                    date('Y-m-d', strtotime($row['week_start'])),
-                    date('Y-m-d', strtotime($row['week_end'])),
+                    date('F j, Y', strtotime($row['week_start'])),
+                    date('F j, Y', strtotime($row['week_end'])),
                     $row['transaction_count'],
-                    number_format($row['weekly_total'], 2, '.', '')
+                    number_format($rounded_total, 2, '.', '')
                 ]);
             }
             break;
@@ -117,12 +140,13 @@ try {
             
             // Write data rows
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $rounded_total = $reportController->customRound(floatval($row['monthly_total']));
                 fputcsv($output, [
                     date('F Y', strtotime($row['month'] . '-01')),
-                    date('Y-m-d', strtotime($row['month_start'])),
-                    date('Y-m-d', strtotime($row['month_end'])),
+                    date('F j, Y', strtotime($row['month_start'])),
+                    date('F j, Y', strtotime($row['month_end'])),
                     $row['transaction_count'],
-                    number_format($row['monthly_total'], 2, '.', '')
+                    number_format($rounded_total, 2, '.', '')
                 ]);
             }
             break;
@@ -150,10 +174,11 @@ try {
             
             // Write data rows
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $rounded_total = $reportController->customRound(floatval($row['total_sales']));
                 fputcsv($output, [
                     $row['item_name'],
                     $row['quantity_sold'],
-                    number_format($row['total_sales'], 2, '.', '')
+                    number_format($rounded_total, 2, '.', '')
                 ]);
             }
             break;
@@ -180,16 +205,49 @@ try {
             
             // Write data rows
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $rounded_total = $reportController->customRound(floatval($row['total_sales']));
                 fputcsv($output, [
                     $row['table_number'],
                     $row['transaction_count'],
-                    number_format($row['total_sales'], 2, '.', '')
+                    number_format($rounded_total, 2, '.', '')
+                ]);
+            }
+            break;
+            
+        case 'hourly_sales':
+            // Hourly sales report
+            $sql = "SELECT 
+                      HOUR(p.payment_date) as hour,
+                      COUNT(p.payment_id) as transaction_count,
+                      SUM(p.amount) as hourly_total
+                    FROM payments p
+                    WHERE p.payment_date BETWEEN ? AND ?
+                    AND p.payment_status = 'completed'
+                    GROUP BY HOUR(p.payment_date)
+                    ORDER BY hour";
+            
+            // Write CSV header
+            fputcsv($output, ['Hour', 'Transactions', 'Total Sales (RM)']);
+            
+            $stmt = $db->prepare($sql);
+            $stmt->execute([$start_date . ' 00:00:00', $end_date . ' 23:59:59']);
+            
+            // Write data rows
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $rounded_total = $reportController->customRound(floatval($row['hourly_total']));
+                $display_hour = $row['hour'] == 0 ? '12 AM' : 
+                               ($row['hour'] < 12 ? $row['hour'] . ' AM' : 
+                               ($row['hour'] == 12 ? '12 PM' : ($row['hour'] - 12) . ' PM'));
+                fputcsv($output, [
+                    $display_hour,
+                    $row['transaction_count'],
+                    number_format($rounded_total, 2, '.', '')
                 ]);
             }
             break;
             
         default:
-            fputcsv($output, ['Invalid report type']);
+            fputcsv($output, ['Invalid report type: ' . $report_type]);
             break;
     }
     

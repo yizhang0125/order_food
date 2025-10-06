@@ -547,11 +547,11 @@ ob_start();
         <!-- QR Code Modal -->
         <?php if (!empty($table['image_path']) && file_exists($qr_path)): ?>
         <div class="modal fade" id="qrModal<?php echo $table['id']; ?>" tabindex="-1">
-            <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title">QR Code - Table <?php echo htmlspecialchars($table['table_number']); ?></h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body text-center">
                         <div class="qr-print-content">
@@ -608,12 +608,14 @@ ob_start();
                             </div>
                         </div>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                        <a href="print_qr.php?table_id=<?php echo $table['id']; ?>" target="_blank" class="btn btn-success">
+                    <div class="modal-footer d-flex flex-column flex-md-row gap-2">
+                        <button type="button" class="btn btn-secondary flex-fill" data-bs-dismiss="modal">
+                            <i class="fas fa-times me-2"></i>Close
+                        </button>
+                        <a href="print_qr.php?table_id=<?php echo $table['id']; ?>" target="_blank" class="btn btn-success flex-fill">
                             <i class="fas fa-print me-2"></i>Print QR
                         </a>
-                        <button type="button" class="btn btn-primary" onclick="downloadQRCode('<?php echo htmlspecialchars($qr_file); ?>', 'table_<?php echo htmlspecialchars($table['table_number']); ?>_qr.png')">
+                        <button type="button" class="btn btn-primary flex-fill" onclick="downloadQRCode('<?php echo htmlspecialchars($qr_file); ?>', 'table_<?php echo htmlspecialchars($table['table_number']); ?>_qr.png')">
                             <i class="fas fa-download me-2"></i>Download
                         </button>
                     </div>
@@ -714,22 +716,27 @@ function printQRCode() {
 
 <!-- Add Table Modal -->
 <div class="modal fade" id="addTableModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add New Table</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="table_number" class="form-label">Table Number</label>
-                        <input type="text" class="form-control" id="table_number" name="table_number" required>
+                        <input type="text" class="form-control" id="table_number" name="table_number" 
+                               placeholder="Enter table number" required autocomplete="off">
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="add_table" class="btn btn-primary">Add Table</button>
+                <div class="modal-footer d-flex flex-column flex-md-row gap-2">
+                    <button type="button" class="btn btn-secondary flex-fill" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Cancel
+                    </button>
+                    <button type="submit" name="add_table" class="btn btn-primary flex-fill">
+                        <i class="fas fa-plus me-2"></i>Add Table
+                    </button>
                 </div>
             </form>
         </div>
@@ -739,11 +746,11 @@ function printQRCode() {
 <!-- Edit Table Modal -->
 <?php foreach ($tables as $table): ?>
 <div class="modal fade" id="editTableModal<?php echo $table['id']; ?>" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Edit Table</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST">
                 <div class="modal-body">
@@ -751,12 +758,17 @@ function printQRCode() {
                     <div class="mb-3">
                         <label for="new_table_number" class="form-label">Table Number</label>
                         <input type="text" class="form-control" id="new_table_number" name="new_table_number" 
-                               value="<?php echo htmlspecialchars($table['table_number']); ?>" required>
+                               value="<?php echo htmlspecialchars($table['table_number']); ?>" 
+                               placeholder="Enter table number" required autocomplete="off">
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="edit_table" class="btn btn-primary">Save Changes</button>
+                <div class="modal-footer d-flex flex-column flex-md-row gap-2">
+                    <button type="button" class="btn btn-secondary flex-fill" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Cancel
+                    </button>
+                    <button type="submit" name="edit_table" class="btn btn-primary flex-fill">
+                        <i class="fas fa-save me-2"></i>Save Changes
+                    </button>
                 </div>
             </form>
         </div>
@@ -765,21 +777,31 @@ function printQRCode() {
 
 <!-- Delete Table Modal -->
 <div class="modal fade" id="deleteTableModal<?php echo $table['id']; ?>" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Delete Table</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title text-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Delete Table
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to delete Table <?php echo htmlspecialchars($table['table_number']); ?>?</p>
-                <p class="text-danger"><small>This action cannot be undone and will remove all associated QR codes.</small></p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-warning me-2"></i>
+                    <strong>Warning:</strong> This action cannot be undone!
+                </div>
+                <p>Are you sure you want to delete <strong>Table <?php echo htmlspecialchars($table['table_number']); ?></strong>?</p>
+                <p class="text-muted"><small>This will remove the table and all associated QR codes permanently.</small></p>
             </div>
             <form method="POST">
-                <div class="modal-footer">
+                <div class="modal-footer d-flex flex-column flex-md-row gap-2">
                     <input type="hidden" name="table_id" value="<?php echo $table['id']; ?>">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="delete_table" class="btn btn-danger">Delete Table</button>
+                    <button type="button" class="btn btn-secondary flex-fill" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Cancel
+                    </button>
+                    <button type="submit" name="delete_table" class="btn btn-danger flex-fill">
+                        <i class="fas fa-trash me-2"></i>Delete Table
+                    </button>
                 </div>
             </form>
         </div>

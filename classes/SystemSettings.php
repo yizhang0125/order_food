@@ -153,6 +153,27 @@ class SystemSettings extends Model {
     }
     
     /**
+     * Get service tax rate as decimal (e.g., 10% = 0.10)
+     */
+    public function getServiceTaxRate() {
+        return $this->getSetting('service_tax_rate', 10) / 100;
+    }
+    
+    /**
+     * Get service tax rate as percentage (e.g., 10)
+     */
+    public function getServiceTaxRatePercent() {
+        return $this->getSetting('service_tax_rate', 10);
+    }
+    
+    /**
+     * Get service tax name
+     */
+    public function getServiceTaxName() {
+        return $this->getSetting('service_tax_name', 'Service Tax');
+    }
+    
+    /**
      * Get currency symbol
      */
     public function getCurrencySymbol() {
@@ -178,6 +199,98 @@ class SystemSettings extends Model {
      */
     public function clearCache() {
         $this->cache = [];
+    }
+    
+    /**
+     * Get discount settings
+     */
+    public function getDiscountSettings() {
+        return [
+            'enable_discounts' => $this->getSetting('enable_discounts', true),
+            'birthday_discount_percent' => $this->getSetting('birthday_discount_percent', 10),
+            'staff_discount_percent' => $this->getSetting('staff_discount_percent', 20),
+            'review_discount_percent' => $this->getSetting('review_discount_percent', 5),
+            'complaint_discount_percent' => $this->getSetting('complaint_discount_percent', 15),
+            'max_discount_amount' => $this->getSetting('max_discount_amount', 50)
+        ];
+    }
+    
+    /**
+     * Check if discounts are enabled
+     */
+    public function isDiscountEnabled() {
+        return $this->getSetting('enable_discounts', true);
+    }
+    
+    /**
+     * Get birthday discount percentage
+     */
+    public function getBirthdayDiscountPercent() {
+        return $this->getSetting('birthday_discount_percent', 10);
+    }
+    
+    /**
+     * Get staff discount percentage
+     */
+    public function getStaffDiscountPercent() {
+        return $this->getSetting('staff_discount_percent', 20);
+    }
+    
+    /**
+     * Get review discount percentage
+     */
+    public function getReviewDiscountPercent() {
+        return $this->getSetting('review_discount_percent', 5);
+    }
+    
+    /**
+     * Get complaint discount percentage
+     */
+    public function getComplaintDiscountPercent() {
+        return $this->getSetting('complaint_discount_percent', 15);
+    }
+    
+    /**
+     * Get maximum discount amount
+     */
+    public function getMaxDiscountAmount() {
+        return $this->getSetting('max_discount_amount', 50);
+    }
+    
+    
+    /**
+     * Calculate discount amount
+     */
+    public function calculateDiscount($subtotal, $discount_type, $discount_percent = null) {
+        if (!$this->isDiscountEnabled()) {
+            return 0;
+        }
+        
+        // Use provided percentage or get from settings
+        if ($discount_percent === null) {
+            switch ($discount_type) {
+                case 'birthday':
+                    $discount_percent = $this->getBirthdayDiscountPercent();
+                    break;
+                case 'staff':
+                    $discount_percent = $this->getStaffDiscountPercent();
+                    break;
+                case 'review':
+                    $discount_percent = $this->getReviewDiscountPercent();
+                    break;
+                case 'complaint':
+                    $discount_percent = $this->getComplaintDiscountPercent();
+                    break;
+                default:
+                    return 0;
+            }
+        }
+        
+        $discount_amount = ($subtotal * $discount_percent) / 100;
+        $max_discount = $this->getMaxDiscountAmount();
+        
+        // Apply maximum discount limit
+        return min($discount_amount, $max_discount);
     }
 }
 ?>

@@ -9,6 +9,15 @@ $db = $database->getConnection();
 $auth = new Auth($db);
 $orderModel = new Order($db);
 
+// Cash rounding function - rounds to nearest 0.05 (5 cents)
+if (!function_exists('customRound')) {
+    function customRound($amount) {
+        // Round to nearest 0.05 (5 cents) for cash transactions
+        // Multiply by 20, round to nearest integer, then divide by 20
+        return round($amount * 20) / 20;
+    }
+}
+
 // Check if user is logged in
 if (!$auth->isLoggedIn()) {
     header('Location: login.php');
@@ -80,7 +89,7 @@ ob_start();
                     <tr>
                         <td colspan="8" class="text-center py-4">
                             <i class="fas fa-inbox fa-2x mb-3 text-muted d-block"></i>
-                            No cancelled orders found for the selected date range
+                            No cancelled orders found for the selected date range (<?php echo $start_date; ?> to <?php echo $end_date; ?>)
                         </td>
                     </tr>
                     <?php else: ?>
@@ -129,12 +138,16 @@ ob_start();
                                     <span class="item-count"><?php echo $order['item_count']; ?> items</span>
                                     <div class="item-details small text-muted">
                                         <?php 
-                                        $items = explode(', ', $order['items_list']);
-                                        $itemsList = [];
-                                        foreach($items as $item) {
-                                            $itemsList[] = preg_replace('/ - Note:.*$/', '', $item);
+                                        if (!empty($order['items_list'])) {
+                                            $items = explode(', ', $order['items_list']);
+                                            $itemsList = [];
+                                            foreach($items as $item) {
+                                                $itemsList[] = preg_replace('/ - Note:.*$/', '', $item);
+                                            }
+                                            echo implode(', ', $itemsList);
+                                        } else {
+                                            echo '<span class="text-danger">No items found</span>';
                                         }
-                                        echo implode(', ', $itemsList);
                                         ?>
                                     </div>
                                 </div>
@@ -142,20 +155,18 @@ ob_start();
                             <td>
                                 <div class="special-instructions">
                                     <?php 
-                                    $items = explode(', ', $order['items_list']);
-                                    $instructions = [];
-                                    foreach($items as $item) {
-                                        if(strpos($item, ' - Note: ') !== false) {
-                                            list($itemName, $note) = explode(' - Note: ', $item);
-                                            $instructions[] = "<div class='instruction-item'><strong>" . htmlspecialchars($itemName) . "</strong>: " . htmlspecialchars($note) . "</div>";
+                                    if (!empty($order['special_instructions'])) {
+                                        foreach($order['special_instructions'] as $instruction) {
+                                            echo "<div class='instruction-item'><strong>" . htmlspecialchars($instruction['item']) . "</strong>: " . htmlspecialchars($instruction['instructions']) . "</div>";
                                         }
+                                    } else {
+                                        echo '<span class="text-muted">No special instructions</span>';
                                     }
-                                    echo !empty($instructions) ? implode('', $instructions) : '<span class="text-muted">No special instructions</span>';
                                     ?>
                                 </div>
                             </td>
                             <td>
-                                <span class="order-amount">RM <?php echo number_format($order['total_amount'], 2); ?></span>
+                                <span class="order-amount">RM <?php echo number_format(customRound($order['total_amount']), 2); ?></span>
                             </td>
                             <td>
                                 <span class="status-badge cancelled">
@@ -482,7 +493,7 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "true") {
                 <tr>
                     <td colspan="8" class="text-center py-4">
                         <i class="fas fa-inbox fa-2x mb-3 text-muted d-block"></i>
-                        No cancelled orders found for the selected date range
+                        No cancelled orders found for the selected date range (<?php echo $start_date; ?> to <?php echo $end_date; ?>)
                     </td>
                 </tr>
                 <?php else: ?>
@@ -531,12 +542,16 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "true") {
                                 <span class="item-count"><?php echo $order['item_count']; ?> items</span>
                                 <div class="item-details small text-muted">
                                     <?php 
-                                    $items = explode(', ', $order['items_list']);
-                                    $itemsList = [];
-                                    foreach($items as $item) {
-                                        $itemsList[] = preg_replace('/ - Note:.*$/', '', $item);
+                                    if (!empty($order['items_list'])) {
+                                        $items = explode(', ', $order['items_list']);
+                                        $itemsList = [];
+                                        foreach($items as $item) {
+                                            $itemsList[] = preg_replace('/ - Note:.*$/', '', $item);
+                                        }
+                                        echo implode(', ', $itemsList);
+                                    } else {
+                                        echo '<span class="text-danger">No items found</span>';
                                     }
-                                    echo implode(', ', $itemsList);
                                     ?>
                                 </div>
                             </div>
@@ -544,20 +559,18 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "true") {
                         <td>
                             <div class="special-instructions">
                                 <?php 
-                                $items = explode(', ', $order['items_list']);
-                                $instructions = [];
-                                foreach($items as $item) {
-                                    if(strpos($item, ' - Note: ') !== false) {
-                                        list($itemName, $note) = explode(' - Note: ', $item);
-                                        $instructions[] = "<div class='instruction-item'><strong>" . htmlspecialchars($itemName) . "</strong>: " . htmlspecialchars($note) . "</div>";
+                                if (!empty($order['special_instructions'])) {
+                                    foreach($order['special_instructions'] as $instruction) {
+                                        echo "<div class='instruction-item'><strong>" . htmlspecialchars($instruction['item']) . "</strong>: " . htmlspecialchars($instruction['instructions']) . "</div>";
                                     }
+                                } else {
+                                    echo '<span class="text-muted">No special instructions</span>';
                                 }
-                                echo !empty($instructions) ? implode('', $instructions) : '<span class="text-muted">No special instructions</span>';
                                 ?>
                             </div>
                         </td>
                         <td>
-                            <span class="order-amount">RM <?php echo number_format($order['total_amount'], 2); ?></span>
+                            <span class="order-amount">RM <?php echo number_format(customRound($order['total_amount']), 2); ?></span>
                         </td>
                         <td>
                             <span class="status-badge cancelled">
@@ -599,6 +612,10 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "true") {
     <?php
     exit;
 }
+
+// Include the layout
+include 'includes/layout.php';
+?> 
 
 // Include the layout
 include 'includes/layout.php';

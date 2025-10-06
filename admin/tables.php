@@ -123,20 +123,104 @@ if (isset($_POST['delete_table'])) {
     }
 }
 
-// Get all tables
+// Handle Toggle Table Occupied Status
+if (isset($_POST['toggle_occupied'])) {
+    $table_id = $_POST['table_id'];
+    $action = $_POST['action']; // 'occupy' or 'free'
+    
+    try {
+        if ($action === 'occupy') {
+            // Mark table as occupied by creating a dummy order or updating table status
+            $update_query = "UPDATE tables SET status = 'occupied' WHERE id = ?";
+            $update_stmt = $db->prepare($update_query);
+            $update_stmt->execute([$table_id]);
+            
+            $message = "Table marked as occupied";
+            $message_type = "success";
+        } else if ($action === 'free') {
+            // Mark table as available
+            $update_query = "UPDATE tables SET status = 'active' WHERE id = ?";
+            $update_stmt = $db->prepare($update_query);
+            $update_stmt->execute([$table_id]);
+            
+            $message = "Table marked as available";
+            $message_type = "success";
+        }
+    } catch (Exception $e) {
+        $message = $e->getMessage();
+        $message_type = "danger";
+    }
+}
+
+// Handle Clear Table Orders (Complete all pending orders for a table)
+if (isset($_POST['clear_table_orders'])) {
+    $table_id = $_POST['table_id'];
+    
+    try {
+        // Update all pending/processing orders for this table to completed
+        $update_query = "UPDATE orders SET status = 'completed', updated_at = NOW() WHERE table_id = ? AND status IN ('pending', 'processing')";
+        $update_stmt = $db->prepare($update_query);
+        $update_stmt->execute([$table_id]);
+        
+        $affected_rows = $update_stmt->rowCount();
+        
+        if ($affected_rows > 0) {
+            $message = "Cleared {$affected_rows} pending orders for this table";
+            $message_type = "success";
+        } else {
+            $message = "No pending orders found for this table";
+            $message_type = "info";
+        }
+    } catch (Exception $e) {
+        $message = $e->getMessage();
+        $message_type = "danger";
+    }
+}
+
+// Get all tables with enhanced occupied status
 try {
     $query = "SELECT t.*, 
               COUNT(DISTINCT o.id) as total_orders,
               COUNT(DISTINCT CASE WHEN o.status IN ('pending', 'processing') THEN o.id END) as pending_orders,
+              COUNT(DISTINCT CASE WHEN o.status = 'completed' AND DATE(o.created_at) = CURDATE() THEN o.id END) as today_orders,
               COUNT(DISTINCT CASE WHEN qc.is_active = 1 AND (qc.expires_at IS NULL OR qc.expires_at > NOW()) THEN qc.id END) as active_qr_codes,
               CASE 
+                  -- If no QR code exists for this table, it's available
+                  WHEN NOT EXISTS (
+                      SELECT 1 FROM qr_codes qc2 
+                      WHERE qc2.table_id = t.id 
+                      AND qc2.is_active = 1 
+                      AND (qc2.expires_at IS NULL OR qc2.expires_at > NOW())
+                  ) THEN 'available'
+                  -- If QR code exists but no orders today, it's available
                   WHEN EXISTS (
+                      SELECT 1 FROM qr_codes qc3 
+                      WHERE qc3.table_id = t.id 
+                      AND qc3.is_active = 1 
+                      AND (qc3.expires_at IS NULL OR qc3.expires_at > NOW())
+                  ) AND NOT EXISTS (
                       SELECT 1 FROM orders o2 
                       WHERE o2.table_id = t.id 
-                      AND o2.status IN ('pending', 'processing')
+                      AND o2.status IN ('pending', 'processing', 'completed')
+                      AND DATE(o2.created_at) = CURDATE()
+                  ) THEN 'available'
+                  -- If QR code exists and has orders today, it's occupied
+                  WHEN EXISTS (
+                      SELECT 1 FROM qr_codes qc4 
+                      WHERE qc4.table_id = t.id 
+                      AND qc4.is_active = 1 
+                      AND (qc4.expires_at IS NULL OR qc4.expires_at > NOW())
+                  ) AND EXISTS (
+                      SELECT 1 FROM orders o2 
+                      WHERE o2.table_id = t.id 
+                      AND o2.status IN ('pending', 'processing', 'completed')
+                      AND DATE(o2.created_at) = CURDATE()
                   ) THEN 'occupied'
+                  -- Default to available
                   ELSE 'available'
-              END as table_status
+              END as table_status,
+              (SELECT MAX(o3.created_at) FROM orders o3 WHERE o3.table_id = t.id AND o3.status IN ('pending', 'processing', 'completed') AND DATE(o3.created_at) = CURDATE()) as last_order_time,
+              (SELECT COUNT(*) FROM orders o4 WHERE o4.table_id = t.id AND o4.status IN ('pending', 'processing', 'completed') AND DATE(o4.created_at) = CURDATE()) as current_orders_count
               FROM tables t
               LEFT JOIN orders o ON t.id = o.table_id
               LEFT JOIN qr_codes qc ON t.id = qc.table_id
@@ -247,10 +331,39 @@ ob_start();
                                 else echo 'Available';
                             ?>
                         </span>
-                        <!-- Debug info (remove this in production) -->
-                        <small style="display: block; color: #666; font-size: 0.75rem; margin-top: 0.25rem;">
-                            Status: <?php echo $table_status; ?> | Orders: <?php echo $table['total_orders']; ?> | Pending: <?php echo $table['pending_orders']; ?>
-                        </small>
+                        <!-- Status Info -->
+                        <?php if ($is_occupied): ?>
+                        <div class="occupied-info">
+                            <small style="display: block; color: #d97706; font-size: 0.75rem; margin-top: 0.25rem; font-weight: 500;">
+                                <i class="fas fa-utensils"></i>
+                                <?php if ($table['last_order_time']): ?>
+                                    Last order: <?php echo date('h:i A', strtotime($table['last_order_time'])); ?>
+                                <?php else: ?>
+                                    Has orders today
+                                <?php endif; ?>
+                                <?php if ($table['current_orders_count'] > 0): ?>
+                                    (<?php echo $table['current_orders_count']; ?> orders today)
+                                <?php endif; ?>
+                                <?php if ($table['pending_orders'] > 0): ?>
+                                    - <?php echo $table['pending_orders']; ?> pending
+                                <?php endif; ?>
+                            </small>
+                        </div>
+                        <?php elseif ($is_available && $table['active_qr_codes'] == 0): ?>
+                        <div class="available-info">
+                            <small style="display: block; color: #10b981; font-size: 0.75rem; margin-top: 0.25rem; font-weight: 500;">
+                                <i class="fas fa-qrcode"></i>
+                                No QR code - Table available for walk-in customers
+                            </small>
+                        </div>
+                        <?php elseif ($is_available && $table['active_qr_codes'] > 0): ?>
+                        <div class="available-info">
+                            <small style="display: block; color: #10b981; font-size: 0.75rem; margin-top: 0.25rem; font-weight: 500;">
+                                <i class="fas fa-check-circle"></i>
+                                QR code active - Ready for customers
+                            </small>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
                 
@@ -266,10 +379,17 @@ ob_start();
                         </div>
                         <div class="stat-item">
                             <div class="stat-label">
+                                <i class="fas fa-calendar-day"></i>
+                                Today
+                            </div>
+                            <div class="stat-value"><?php echo $table['today_orders']; ?></div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">
                                 <i class="fas fa-clock"></i>
                                 Pending
                             </div>
-                            <div class="stat-value"><?php echo $table['pending_orders']; ?></div>
+                            <div class="stat-value <?php echo $table['pending_orders'] > 0 ? 'text-warning' : ''; ?>"><?php echo $table['pending_orders']; ?></div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-label">
@@ -284,6 +404,30 @@ ob_start();
                 <!-- Table Actions -->
                 <div class="table-actions">
                     <div class="action-buttons">
+                        <!-- Occupied-specific actions -->
+                        <?php if ($is_occupied): ?>
+                        <button type="button" class="btn-action btn-clear" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#clearTableModal<?php echo $table['id']; ?>"
+                                title="Clear Table Orders">
+                            <i class="fas fa-broom"></i>
+                        </button>
+                        <button type="button" class="btn-action btn-free" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#freeTableModal<?php echo $table['id']; ?>"
+                                title="Mark as Available">
+                            <i class="fas fa-check-circle"></i>
+                        </button>
+                        <?php else: ?>
+                        <button type="button" class="btn-action btn-occupy" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#occupyTableModal<?php echo $table['id']; ?>"
+                                title="Mark as Occupied">
+                            <i class="fas fa-user-plus"></i>
+                        </button>
+                        <?php endif; ?>
+                        
+                        <!-- Standard actions -->
                         <button type="button" class="btn-action btn-edit" 
                                 data-bs-toggle="modal" 
                                 data-bs-target="#editTableModal<?php echo $table['id']; ?>"
@@ -391,6 +535,103 @@ ob_start();
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" name="delete_table" class="btn btn-danger">
                         <?php echo $table['total_orders'] > 0 ? 'Deactivate Table' : 'Delete Table'; ?>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Clear Table Orders Modal -->
+<div class="modal fade" id="clearTableModal<?php echo $table['id']; ?>" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Clear Table Orders</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to complete all pending orders for Table <?php echo htmlspecialchars($table['table_number']); ?>?</p>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    This will mark all pending and processing orders as completed. Completed orders will remain unchanged.
+                </div>
+                <?php if ($table['pending_orders'] > 0): ?>
+                <p><strong>Pending orders to be completed: <?php echo $table['pending_orders']; ?></strong></p>
+                <?php else: ?>
+                <p><strong>No pending orders to clear.</strong></p>
+                <?php endif; ?>
+                <?php if ($table['today_orders'] > 0): ?>
+                <p><small class="text-muted">Total orders today: <?php echo $table['today_orders']; ?> (including completed orders)</small></p>
+                <?php endif; ?>
+            </div>
+            <form method="POST">
+                <div class="modal-footer">
+                    <input type="hidden" name="table_id" value="<?php echo $table['id']; ?>">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="clear_table_orders" class="btn btn-warning">
+                        <i class="fas fa-broom me-2"></i>Clear Orders
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Free Table Modal -->
+<div class="modal fade" id="freeTableModal<?php echo $table['id']; ?>" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Mark Table as Available</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to mark Table <?php echo htmlspecialchars($table['table_number']); ?> as available?</p>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle me-2"></i>
+                    This will mark the table as available for new customers. Existing orders will remain unchanged.
+                </div>
+                <?php if ($table['today_orders'] > 0): ?>
+                <p><small class="text-muted">Note: This table has <?php echo $table['today_orders']; ?> orders today, but will still show as available.</small></p>
+                <?php endif; ?>
+            </div>
+            <form method="POST">
+                <div class="modal-footer">
+                    <input type="hidden" name="table_id" value="<?php echo $table['id']; ?>">
+                    <input type="hidden" name="action" value="free">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="toggle_occupied" class="btn btn-success">
+                        <i class="fas fa-check-circle me-2"></i>Mark as Available
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Occupy Table Modal -->
+<div class="modal fade" id="occupyTableModal<?php echo $table['id']; ?>" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Mark Table as Occupied</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to mark Table <?php echo htmlspecialchars($table['table_number']); ?> as occupied?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    This will mark the table as occupied and prevent new orders.
+                </div>
+            </div>
+            <form method="POST">
+                <div class="modal-footer">
+                    <input type="hidden" name="table_id" value="<?php echo $table['id']; ?>">
+                    <input type="hidden" name="action" value="occupy">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="toggle_occupied" class="btn btn-warning">
+                        <i class="fas fa-user-plus me-2"></i>Mark as Occupied
                     </button>
                 </div>
             </form>
