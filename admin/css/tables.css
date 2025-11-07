@@ -302,6 +302,20 @@
     gap: 0.5rem;
 }
 
+.inactive-info {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(107, 114, 128, 0.1);
+    border-radius: 6px;
+    border-left: 3px solid var(--gray-400);
+}
+
+.inactive-info small {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .text-warning {
     color: var(--warning) !important;
     font-weight: 600;

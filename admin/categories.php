@@ -64,26 +64,37 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     break;
 
                 case 'update':
-                    // Simple validation
-                    if (empty($_POST['name']) || strlen(trim($_POST['name'])) < 2) {
-                        $message = 'Category name must be at least 2 characters long.';
-                        $message_type = 'danger';
-                    } else {
-                        $data = [
-                            'name' => trim($_POST['name']),
-                            'description' => trim($_POST['description'] ?? '')
-                        ];
-                        
-                        if ($categoryModel->update($_POST['category_id'], $data)) {
-                            $message = 'Category updated successfully!';
-                            $message_type = 'success';
-                            header("Location: categories.php?message=" . urlencode($message) . "&type=" . $message_type);
-                            exit();
-                        } else {
-                            $message = 'Failed to update category.';
-                            $message_type = 'danger';
-                        }
+                    // Enhanced validation and error handling
+                    if (empty($_POST['category_id'])) {
+                        throw new Exception('Category ID is required');
                     }
+
+                    if (empty($_POST['name']) || strlen(trim($_POST['name'])) < 2) {
+                        throw new Exception('Category name must be at least 2 characters long');
+                    }
+
+                    // Check if category exists
+                    $existing = $categoryModel->getById($_POST['category_id']);
+                    if (!$existing) {
+                        throw new Exception('Category not found');
+                    }
+
+                    $data = [
+                        'name' => trim($_POST['name']),
+                        'description' => trim($_POST['description'] ?? '')
+                    ];
+
+                    // Attempt update with error logging
+                    if ($categoryModel->update($_POST['category_id'], $data)) {
+                        $_SESSION['message'] = 'Category updated successfully!';
+                        $_SESSION['message_type'] = 'success';
+                    } else {
+                        throw new Exception('Failed to update category');
+                    }
+
+                    // Redirect to prevent form resubmission
+                    header("Location: categories.php");
+                    exit();
                     break;
 
                 case 'update_status':
@@ -305,27 +316,38 @@ ob_start();
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add New Category</h5>
+                <h5 class="modal-title"><i class="fas fa-folder-plus"></i> Add New Category</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" id="addCategoryForm">
+            <form method="POST" id="addCategoryForm" novalidate>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="add">
                     
                     <div class="mb-3">
-                        <label class="form-label">Name</label>
-                        <input type="text" class="form-control" name="name" required>
+                        <label class="form-label required">Name</label>
+                        <input type="text" class="form-control" name="name" required 
+                               minlength="2" maxlength="100">
+                        <div class="invalid-feedback">
+                            Please enter a category name (2-100 characters).
+                        </div>
                     </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Description</label>
-                        <textarea class="form-control" name="description" rows="3"></textarea>
+                        <textarea class="form-control" name="description" rows="3" 
+                                  maxlength="500"></textarea>
+                        <div class="invalid-feedback">
+                            Description must not exceed 500 characters.
+                        </div>
                     </div>
                 </div>
                 
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="addCategoryBtn">Add Category</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Category
+                        <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -337,28 +359,39 @@ ob_start();
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Edit Category</h5>
+                <h5 class="modal-title"><i class="fas fa-edit"></i> Edit Category</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" id="editCategoryForm">
+            <form method="POST" id="editCategoryForm" novalidate>
                 <div class="modal-body">
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="category_id" id="edit_category_id">
                     
                     <div class="mb-3">
-                        <label class="form-label">Name</label>
-                        <input type="text" class="form-control" name="name" id="edit_name" required>
+                        <label class="form-label required">Name</label>
+                        <input type="text" class="form-control" name="name" id="edit_name" 
+                               required minlength="2" maxlength="100">
+                        <div class="invalid-feedback">
+                            Please enter a category name (2-100 characters).
+                        </div>
                     </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Description</label>
-                        <textarea class="form-control" name="description" id="edit_description" rows="3"></textarea>
+                        <textarea class="form-control" name="description" id="edit_description" 
+                                  rows="3" maxlength="500"></textarea>
+                        <div class="invalid-feedback">
+                            Description must not exceed 500 characters.
+                        </div>
                     </div>
                 </div>
                 
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Changes
+                        <span class="spinner-border spinner-border-sm d-none" role="status"></span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -368,8 +401,9 @@ ob_start();
 <?php
 $content = ob_get_clean();
 
-// No JavaScript needed - pure HTML forms!
+// Add JavaScript for category management
+$extra_js = '<script src="js/categories.js"></script>';
 
 // Include the layout template
 include 'includes/layout.php';
-?> 
+?>

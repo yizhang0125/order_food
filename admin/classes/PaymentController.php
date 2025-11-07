@@ -39,10 +39,11 @@ class PaymentController {
                 $order_data = $order_amount_stmt->fetch(PDO::FETCH_ASSOC);
                 $order_amount = $order_data['total_amount'];
                 $table_number = $order_data['table_number'];
+                $current_datetime = date('Y-m-d H:i:s');
                 
                 // Insert into payments table with TNG Pay details
                 $payment_sql = "INSERT INTO payments (order_id, amount, payment_status, payment_date, payment_method, tng_reference, processed_by_name, discount_amount, discount_type, discount_reason) 
-                               VALUES (?, ?, 'completed', CURRENT_TIMESTAMP, 'tng_pay', ?, ?, ?, ?, ?)";
+                               VALUES (?, ?, 'completed', ?, 'tng_pay', ?, ?, ?, ?, ?)";
                 $payment_stmt = $this->db->prepare($payment_sql);
                 $payment_success = $payment_stmt->execute([$order_id, $order_amount, $tng_reference, $cashier_name, $discount_amount, $discount_type, $discount_reason]);
                 
@@ -97,10 +98,11 @@ class PaymentController {
                 $order_data = $order_amount_stmt->fetch(PDO::FETCH_ASSOC);
                 $order_amount = $order_data['total_amount'];
                 $table_number = $order_data['table_number'];
+                $current_datetime = date('Y-m-d H:i:s');
                 
                 // Insert into payments table with individual order amount
                 $payment_sql = "INSERT INTO payments (order_id, amount, payment_status, payment_date, payment_method, cash_received, change_amount, processed_by_name, discount_amount, discount_type, discount_reason) 
-                               VALUES (?, ?, 'completed', CURRENT_TIMESTAMP, 'cash', ?, ?, ?, ?, ?, ?)";
+                               VALUES (?, ?, 'completed', ?, 'cash', ?, ?, ?, ?, ?, ?)";
                 $payment_stmt = $this->db->prepare($payment_sql);
                 $payment_success = $payment_stmt->execute([$order_id, $order_amount, $cash_received, $change, $cashier_name, $discount_amount, $discount_type, $discount_reason]);
                 

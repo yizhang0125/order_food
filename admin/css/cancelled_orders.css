@@ -1,0 +1,49 @@
+:root {
+    --color-bg: #f8faff;
+    --color-surface: #ffffff;
+    --color-surface-hover: #f1f5f9;
+    --color-primary: #1e40af;
+    --color-secondary: #3b82f6;
+    --color-warning: #ef4444;
+    --color-text: #1e293b;
+    --color-text-light: #64748b;
+    --color-border: #e2e8f0;
+    --border-radius: 10px;
+    --box-shadow: 0 2px 4px rgba(148, 163, 184, 0.05);
+    --box-shadow-lg: 0 8px 16px rgba(148, 163, 184, 0.1);
+    --gradient-blue: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+    --gradient-orange: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+}
+
+/* Page Header */
+.page-header {
+    background: var(--color-surface);
+    padding: 2rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 2rem;
+    box-shadow: var(--box-shadow-lg);
+}
+
+/* Date Filter */
+.date-filter {
+    background: var(--color-surface);
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 2rem;
+    box-shadow: var(--box-shadow-lg);
+}
+
+.date-inputs {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+/* Special Instructions */
+.special-instructions-list {
+    margin-top: 0.5rem;
+    padding-left: 1rem;
+    border-left: 3px solid #e2e8f0;
+}
+
+/* ...rest of existing CSS styles from cancelled_orders.php... */

@@ -121,16 +121,12 @@ try {
         // Daily sales data for chart (default) - get individual payments to recalculate with service tax
         $sales_sql = "SELECT 
                         DATE(p.payment_date) as sale_date,
-                        p.payment_id,
-                        p.amount,
-                        GROUP_CONCAT(CONCAT(oi.quantity, ':', m.price) SEPARATOR '||') as item_details
+                        COUNT(DISTINCT p.payment_id) as transaction_count,
+                        SUM(p.amount) as total_sales
                       FROM payments p
-                      JOIN orders o ON p.order_id = o.id
-                      LEFT JOIN order_items oi ON o.id = oi.order_id
-                      LEFT JOIN menu_items m ON oi.menu_item_id = m.id
                       WHERE p.payment_date BETWEEN ? AND ?
                       AND p.payment_status = 'completed'
-                      GROUP BY p.payment_id, DATE(p.payment_date)
+                      GROUP BY DATE(p.payment_date)
                       ORDER BY sale_date";
     }
     
@@ -298,6 +294,58 @@ try {
         $chart_data[] = round(floatval($period['total_sales']), 2);
         $chart_transactions[] = intval($period['transaction_count']);
     }
+
+    // --- Unified summary card logic ---
+    if (!empty($sales_data)) {
+        if ($view_mode == 'daily') {
+            // Show the last day's summary
+            $summary_period = end($sales_data);
+            $sales_summary = [
+                'total_sales' => $summary_period['total_sales'] ?? 0,
+                'total_transactions' => $summary_period['transaction_count'] ?? 0,
+                'average_sale' => ($summary_period['transaction_count'] ?? 0) > 0 ? $summary_period['total_sales'] / $summary_period['transaction_count'] : 0,
+                'highest_sale' => 0,
+                'sale_date' => $summary_period['sale_date'] ?? $start_date,
+            ];
+        } else if ($view_mode == 'weekly') {
+            // Sum all weeks in the range
+            $total_sales = 0;
+            $total_transactions = 0;
+            $highest_sale = 0;
+            foreach ($sales_data as $period) {
+                $total_sales += $period['total_sales'] ?? 0;
+                $total_transactions += $period['transaction_count'] ?? 0;
+                if (($period['total_sales'] ?? 0) > $highest_sale) {
+                    $highest_sale = $period['total_sales'];
+                }
+            }
+            $sales_summary = [
+                'total_sales' => $total_sales,
+                'total_transactions' => $total_transactions,
+                'average_sale' => $total_transactions > 0 ? $total_sales / $total_transactions : 0,
+                'highest_sale' => $highest_sale,
+                'sale_date' => '', // Not used for weekly
+            ];
+        } else {
+            // Monthly: show the last month's summary
+            $summary_period = end($sales_data);
+            $sales_summary = [
+                'total_sales' => $summary_period['total_sales'] ?? 0,
+                'total_transactions' => $summary_period['transaction_count'] ?? 0,
+                'average_sale' => ($summary_period['transaction_count'] ?? 0) > 0 ? $summary_period['total_sales'] / $summary_period['transaction_count'] : 0,
+                'highest_sale' => 0,
+                'sale_date' => $summary_period['month'] ?? $start_date,
+            ];
+        }
+    } else {
+        $sales_summary = [
+            'total_sales' => 0,
+            'total_transactions' => 0,
+            'average_sale' => 0,
+            'highest_sale' => 0,
+            'sale_date' => $start_date,
+        ];
+    }
     
 } catch (Exception $e) {
     $error_message = $e->getMessage();
@@ -358,14 +406,12 @@ ob_start();
             </div>
             <div class="summary-info">
                 <h3>Total <?php echo ucfirst($view_mode); ?> Sales</h3>
-                <p>RM <?php echo number_format($sales_summary['total_sales'] ?? 0, 2); ?></p>
-                <?php if ($view_mode == 'daily' && isset($sales_summary['sale_date'])): ?>
-                    <small><?php echo date('M j, Y', strtotime($sales_summary['sale_date'])); ?></small>
-                <?php elseif ($view_mode == 'weekly' && isset($sales_summary['week_start']) && isset($sales_summary['week_end'])): ?>
-                    <small><?php echo date('M j', strtotime($sales_summary['week_start'])); ?> - <?php echo date('M j, Y', strtotime($sales_summary['week_end'])); ?></small>
-                <?php elseif ($view_mode == 'monthly' && isset($sales_summary['month'])): ?>
-                    <small><?php echo date('F Y', strtotime($sales_summary['month'] . '-01')); ?></small>
-                <?php endif; ?>
+                <p>RM <?php echo number_format($sales_summary['total_sales'], 2); ?></p>
+                <small>
+                    <?php if ($view_mode == 'daily'): ?>
+                        <?php echo date('M j, Y', strtotime($sales_summary['sale_date'])); ?>
+                    <?php endif; ?>
+                </small>
             </div>
         </div>
         <div class="summary-card">

@@ -803,270 +803,108 @@ class Order extends Model {
         }
     }
 
-    public function getCancelledOrders($start_date, $end_date) {
+    /**
+     * Get cancelled orders with details for today
+     */
+    public function getCancelledOrders($start_date = null, $end_date = null) {
+        // Use provided dates or default to today
+        if (!$start_date) $start_date = date('Y-m-d');
+        if (!$end_date) $end_date = date('Y-m-d');
+
+        $query = "SELECT o.*, 
+                    t.table_number,
+                    o.created_at as cancelled_at,
+                    GROUP_CONCAT(
+                        CONCAT(mi.name, ' (', oi.quantity, ')') 
+                        SEPARATOR ', '
+                    ) as items_list,
+                    GROUP_CONCAT(
+                        JSON_OBJECT(
+                            'id', oi.id,
+                            'item', mi.name,
+                            'quantity', oi.quantity,
+                            'instructions', COALESCE(oi.special_instructions, '')
+                        )
+                    ) as instructions_list
+                 FROM orders o
+                 INNER JOIN tables t ON o.table_id = t.id
+                 LEFT JOIN order_items oi ON o.id = oi.order_id
+                 LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
+                 WHERE o.status = 'cancelled'
+                 AND DATE(o.created_at) BETWEEN :start_date AND :end_date
+                 GROUP BY o.id, o.table_id, o.status, o.total_amount, o.created_at, t.table_number
+                 ORDER BY o.created_at DESC";
+
         try {
-            // First, get the basic order data (without cancelled_at and cancel_reason columns)
-            $query = "SELECT 
-                        o.id, 
-                        o.table_id, 
-                        o.status, 
-                        o.total_amount, 
-                        o.created_at,
-                        t.table_number, 
-                        COUNT(oi.id) as item_count
-                       FROM orders o
-                       LEFT JOIN tables t ON o.table_id = t.id
-                       LEFT JOIN order_items oi ON o.id = oi.order_id
-                       WHERE o.status = 'cancelled' 
-                       AND DATE(o.created_at) BETWEEN :start_date AND :end_date
-                       GROUP BY o.id, o.table_id, o.status, o.total_amount, o.created_at, t.table_number
-                       ORDER BY o.created_at DESC";
-            
-            $stmt = $this->conn->prepare($query);
+            $stmt = $this->db->prepare($query);
             $stmt->bindParam(':start_date', $start_date);
             $stmt->bindParam(':end_date', $end_date);
             $stmt->execute();
             
             $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Now get the items for each order separately
+            // Process special instructions
             foreach ($orders as &$order) {
-                // Initialize arrays
-                $order['items'] = [];
-                $order['order_items'] = [];
                 $order['special_instructions'] = [];
-                $order['items_list'] = '';
-                
-                // Add missing columns with default values
-                $order['cancelled_at'] = $order['created_at']; // Use created_at as cancelled_at for now
-                $order['cancel_reason'] = 'No reason provided'; // Default cancel reason
-                
-                // Get order items separately
-                $items_query = "SELECT oi.*, mi.name 
-                               FROM order_items oi 
-                               JOIN menu_items mi ON oi.menu_item_id = mi.id 
-                               WHERE oi.order_id = ?";
-                $items_stmt = $this->conn->prepare($items_query);
-                $items_stmt->execute([$order['id']]);
-                $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
-                
-                foreach ($items as $item) {
-                    $order['items'][] = $item['name'] . ' (' . $item['quantity'] . ')';
-                    $order['order_items'][] = [
-                        'id' => $item['id'],
-                        'name' => $item['name'],
-                        'quantity' => $item['quantity'],
-                        'price' => $item['price']
-                    ];
-                    if (!empty($item['special_instructions'])) {
-                        $order['special_instructions'][] = [
-                            'item' => $item['name'],
-                            'instructions' => $item['special_instructions']
-                        ];
+                if (!empty($order['instructions_list'])) {
+                    $instructions = explode('},{', trim($order['instructions_list'], '[]'));
+                    foreach ($instructions as $instruction) {
+                        if (!empty($instruction)) {
+                            // Fix JSON format if needed
+                            if (substr($instruction, -1) !== '}') $instruction .= '}';
+                            if (substr($instruction, 0, 1) !== '{') $instruction = '{' . $instruction;
+                            
+                            $instruction_data = json_decode($instruction, true);
+                            if ($instruction_data && !empty($instruction_data['instructions'])) {
+                                $order['special_instructions'][] = $instruction_data;
+                            }
+                        }
                     }
                 }
-                $order['items_list'] = implode(', ', $order['items']);
+                unset($order['instructions_list']);
             }
             
             return $orders;
         } catch (PDOException $e) {
-            error_log("PDO Error in getCancelledOrders: " . $e->getMessage());
-            throw new Exception("Error retrieving cancelled orders: " . $e->getMessage());
-        } catch (Exception $e) {
-            error_log("General Error in getCancelledOrders: " . $e->getMessage());
-            throw new Exception("Error retrieving cancelled orders: " . $e->getMessage());
-        }
-    }
-
-    /**
-     * Get total sales for a date range
-     */
-    public function getTotalSales($start_date, $end_date) {
-        try {
-            $query = "SELECT COALESCE(SUM(total_amount), 0) as total_sales 
-                     FROM orders 
-                     WHERE DATE(created_at) BETWEEN :start_date AND :end_date 
-                     AND status != 'cancelled'";
-            
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':start_date', $start_date);
-            $stmt->bindParam(':end_date', $end_date);
-            $stmt->execute();
-            
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            return $result['total_sales'];
-        } catch (PDOException $e) {
-            error_log("Error in getTotalSales: " . $e->getMessage());
-            return 0;
-        }
-    }
-
-    /**
-     * Get total number of cancelled orders for a date range
-     */
-    public function getTotalCancelledOrders($start_date, $end_date) {
-        try {
-            $query = "SELECT COUNT(*) as cancelled_orders 
-                     FROM orders 
-                     WHERE DATE(created_at) BETWEEN :start_date AND :end_date 
-                     AND status = 'cancelled'";
-            
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':start_date', $start_date);
-            $stmt->bindParam(':end_date', $end_date);
-            $stmt->execute();
-            
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            return $result['cancelled_orders'];
-        } catch (PDOException $e) {
-            error_log("Error in getTotalCancelledOrders: " . $e->getMessage());
-            return 0;
-        }
-    }
-
-    /**
-     * Get top selling items for a date range
-     */
-    public function getTopSellingItems($start_date, $end_date, $limit = 5) {
-        try {
-            $query = "SELECT mi.name, COUNT(*) as total_ordered, SUM(oi.quantity) as quantity_sold
-                     FROM order_items oi
-                     JOIN menu_items mi ON oi.menu_item_id = mi.id
-                     JOIN orders o ON oi.order_id = o.id
-                     WHERE DATE(o.created_at) BETWEEN :start_date AND :end_date
-                     AND o.status != 'cancelled'
-                     GROUP BY mi.id, mi.name
-                     ORDER BY quantity_sold DESC
-                     LIMIT :limit";
-            
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':start_date', $start_date);
-            $stmt->bindParam(':end_date', $end_date);
-            $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (PDOException $e) {
-            error_log("Error in getTopSellingItems: " . $e->getMessage());
+            error_log("Error getting cancelled orders: " . $e->getMessage());
             return [];
         }
     }
 
     /**
-     * Get sales trend data for a date range
+     * Cancel an order and track cancellation details
      */
-    public function getSalesTrend($start_date, $end_date) {
+    public function cancelOrder($order_id, $cancellation_data = []) {
         try {
-            $query = "SELECT 
-                        DATE(created_at) as date,
-                        COUNT(*) as order_count,
-                        SUM(total_amount) as daily_sales
-                     FROM " . $this->table_name . "
-                     WHERE DATE(created_at) BETWEEN :start_date AND :end_date
-                     AND status = 'completed'
-                     GROUP BY DATE(created_at)
-                     ORDER BY date ASC";
-            
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':start_date', $start_date);
-            $stmt->bindParam(':end_date', $end_date);
-            $stmt->execute();
-            
-            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Fill in missing dates with zero values
-            $trend_data = [];
-            $current_date = new DateTime($start_date);
-            $end = new DateTime($end_date);
-            $end->modify('+1 day');
-            
-            while ($current_date < $end) {
-                $date_str = $current_date->format('Y-m-d');
-                $trend_data[$date_str] = [
-                    'date' => $date_str,
-                    'order_count' => 0,
-                    'daily_sales' => 0
-                ];
-                $current_date->modify('+1 day');
-            }
-            
-            // Merge actual data
-            foreach ($results as $row) {
-                $trend_data[$row['date']] = [
-                    'date' => $row['date'],
-                    'order_count' => (int)$row['order_count'],
-                    'daily_sales' => (float)$row['daily_sales']
-                ];
-            }
-            
-            // Calculate additional metrics
-            $total_sales = 0;
-            $total_orders = 0;
-            $daily_averages = [];
-            
-            foreach ($trend_data as $data) {
-                $total_sales += $data['daily_sales'];
-                $total_orders += $data['order_count'];
-                if ($data['order_count'] > 0) {
-                    $daily_averages[] = $data['daily_sales'] / $data['order_count'];
-                }
-            }
-            
-            $avg_order_value = count($daily_averages) > 0 ? array_sum($daily_averages) / count($daily_averages) : 0;
-            
-            return [
-                'daily_data' => array_values($trend_data),
-                'summary' => [
-                    'total_sales' => $total_sales,
-                    'total_orders' => $total_orders,
-                    'average_order_value' => $avg_order_value
-                ]
-            ];
-            
-        } catch (PDOException $e) {
-            error_log("Error in getSalesTrend: " . $e->getMessage());
-            throw new Exception("Error calculating sales trend");
-        }
-    }
+            $this->db->beginTransaction();
 
-    /**
-     * Get orders by table number and specific statuses
-     * 
-     * @param int $table_number The table number
-     * @param array $statuses Array of order statuses to include
-     * @return array Orders for the specified table with the specified statuses
-     */
-    public function getOrdersByTableAndStatus($table_number, $statuses = ['pending', 'processing']) {
-        try {
-            $placeholders = str_repeat('?,', count($statuses) - 1) . '?';
-            $sql = "SELECT o.*, 
-                   (SELECT JSON_ARRAYAGG(
-                       JSON_OBJECT(
-                           'id', oi.id,
-                           'name', m.name,
-                           'price', m.price,
-                           'quantity', oi.quantity,
-                           'instructions', oi.special_instructions
-                       )
-                   ) 
-                   FROM order_items oi 
-                   JOIN menu_items m ON oi.menu_item_id = m.id 
-                   WHERE oi.order_id = o.id) as items
-                   FROM orders o
-                   JOIN tables t ON o.table_id = t.id
-                   WHERE t.table_number = ?
-                   AND o.status IN ($placeholders)
-                   ORDER BY o.created_at DESC";
+            // Update order status to cancelled
+            $query = "UPDATE orders SET 
+                        status = 'cancelled',
+                        updated_at = NOW()
+                     WHERE id = :order_id";
             
-            $params = array_merge([$table_number], $statuses);
-            $stmt = $this->conn->prepare($sql);
-            $stmt->execute($params);
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(':order_id', $order_id);
             
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!$stmt->execute()) {
+                throw new Exception("Failed to update order status");
+            }
+
+            // Log the cancellation if logging table exists
+            if (isset($cancellation_data['cancelled_from'])) {
+                // You can add additional logging here if needed
+                error_log("Order #$order_id cancelled from: " . $cancellation_data['cancelled_from']);
+            }
+
+            $this->db->commit();
+            return true;
+
         } catch (Exception $e) {
-            error_log("Error in getOrdersByTableAndStatus: " . $e->getMessage());
-            return [];
+            $this->db->rollBack();
+            error_log("Error cancelling order: " . $e->getMessage());
+            return false;
         }
     }
 }
-?> 
+?>

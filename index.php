@@ -49,6 +49,9 @@ if ($table_number && $token) {
             $check_stmt = $db->prepare($check_query);
             $check_stmt->execute([$table_number, $token]);
             $check_data = $check_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Debug: Log QR validation details
+            error_log("QR Validation Debug - Table: $table_number, Token: $token, Check Data: " . json_encode($check_data));
 
             if (!$check_data) {
                 $error_message = "Invalid QR code. Please scan a valid QR code from your table.";
@@ -62,6 +65,8 @@ if ($table_number && $token) {
             } elseif ($check_data['expires_at'] && strtotime($check_data['expires_at']) < time()) {
                 $error_message = "This QR code has expired. Please request a new QR code from our staff.";
                 $error_type = "expired";
+                // Debug: Log expiration check
+                error_log("QR Code Expired - Expires at: " . $check_data['expires_at'] . ", Current time: " . date('Y-m-d H:i:s'));
             }
         } else {
             $valid_access = true;
@@ -89,6 +94,10 @@ if (!$valid_access) {
         <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
+            * {
+                box-sizing: border-box;
+            }
+            
             :root {
                 --error-color: #ef4444;
                 --warning-color: #f59e0b;

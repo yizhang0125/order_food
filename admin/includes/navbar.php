@@ -71,9 +71,12 @@ try {
                         </div>
                     </div>
                     <div class="p-2 text-center border-top">
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshNotifications()">
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshNotifications()" id="refreshBtn">
                             <i class="fas fa-sync-alt me-1"></i>Refresh
                         </button>
+                        <small class="text-muted d-block mt-1">
+                            <i class="fas fa-clock me-1"></i>Auto-refresh every 3s
+                        </small>
                     </div>
                 </div>
             </div>
@@ -579,129 +582,3 @@ try {
     }
 }
 </style> 
-</style>
-
-<nav class="navbar top-navbar">
-    <div class="d-flex align-items-center w-100">
-        <!-- Brand -->
-        <div class="brand-wrapper">
-            <a class="navbar-brand d-flex align-items-center" href="dashboard.php">
-                <div class="brand-icon">
-                    <i class="fas fa-utensils"></i>
-                </div>
-                <span>Gourmet Delights</span>
-            </a>
-        </div>
-
-        <!-- Toggle Button (only show if user has permissions) -->
-        <?php 
-        $has_permissions = false;
-        if ($_SESSION['user_type'] === 'admin') {
-            $has_permissions = true;
-        } else if (isset($_SESSION['staff_permissions']) && is_array($_SESSION['staff_permissions'])) {
-            $has_permissions = !empty($_SESSION['staff_permissions']);
-        }
-        ?>
-        <?php if ($has_permissions): ?>
-        <button class="btn d-lg-none me-2" id="sidebarToggle">
-            <i class="fas fa-bars" style="color: var(--primary-color); font-size: 1.4rem;"></i>
-        </button>
-        <?php endif; ?>
-
-        <!-- Right Menu Items -->
-        <div class="d-flex align-items-center ms-auto">
-            <!-- Notifications -->
-            <div class="dropdown me-2 me-md-3">
-                <button class="btn notification-btn" data-bs-toggle="dropdown" id="notificationBtn">
-                    <i class="fas fa-bell"></i>
-                    <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
-                </button>
-                <div class="dropdown-menu dropdown-menu-end p-0" style="width: 350px;">
-                    <div class="p-3 border-bottom">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="mb-0">Notifications</h6>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="clearAllNotifications()" style="font-size: 0.8rem;">Clear All</button>
-                        </div>
-                    </div>
-                    <div class="notification-list" id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                        <div class="p-3 text-center text-muted">
-                            <i class="fas fa-bell-slash fa-2x mb-2"></i>
-                            <p class="mb-0">No notifications yet</p>
-                        </div>
-                    </div>
-                    <div class="p-2 text-center border-top">
-                        <button class="btn btn-sm btn-outline-primary" onclick="refreshNotifications()">
-                            <i class="fas fa-sync-alt me-1"></i>Refresh
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- User Profile -->
-            <div class="dropdown">
-                <a href="#" class="user-profile text-decoration-none" data-bs-toggle="dropdown">
-                    <div class="user-avatar">
-                        <i class="fas fa-user"></i>
-                    </div>
-                    <div class="user-info">
-                        <p class="user-name"><?php 
-                            if ($_SESSION['user_type'] === 'admin') {
-                                echo htmlspecialchars($_SESSION['admin_username']);
-                            } else {
-                                echo htmlspecialchars($_SESSION['staff_name']);
-                            }
-                        ?></p>
-                        <p class="user-role"><?php 
-                            echo $_SESSION['user_type'] === 'admin' ? 'Administrator' : ucfirst($_SESSION['staff_position']); 
-                        ?></p>
-                    </div>
-                    <i class="fas fa-chevron-down ms-2" style="color: #777; font-size: 0.8rem;"></i>
-                </a>
-                <ul class="dropdown-menu dropdown-menu-end mt-2">
-                    <li class="px-3 py-2">
-                        <div class="d-flex align-items-center">
-                            <div class="user-avatar me-3">
-                                <i class="fas fa-user"></i>
-                            </div>
-                            <div>
-                                <?php 
-                                $displayName = ($_SESSION['user_type'] === 'admin')
-                                    ? (isset($_SESSION['admin_username']) ? htmlspecialchars($_SESSION['admin_username']) : 'Admin')
-                                    : (isset($_SESSION['staff_name']) ? htmlspecialchars($_SESSION['staff_name']) : 'Staff');
-                                $displayRole = ($_SESSION['user_type'] === 'admin')
-                                    ? 'Administrator'
-                                    : (isset($_SESSION['staff_position']) ? ucfirst(htmlspecialchars($_SESSION['staff_position'])) : 'Staff');
-                                ?>
-                                <p class="user-name mb-0"><?php echo $displayName; ?></p>
-                                <p class="user-role mb-0"><?php echo $displayRole; ?></p>
-                            </div>
-                        </div>
-                    </li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item py-2" href="profile.php"><i class="fas fa-user-circle me-2"></i>My Profile</a></li>
-                    <li><a class="dropdown-item py-2" href="settings.php"><i class="fas fa-cog me-2"></i>Settings</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item py-2 text-danger" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</nav>
-
-<!-- Notification Toast -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-    <div id="liveToast" class="toast" role="alert">
-        <div class="toast-header">
-            <i class="fas fa-bell me-2"></i>
-            <strong class="me-auto">Notification</strong>
-            <small>Just now</small>
-            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-        </div>
-        <div class="toast-body">
-            <!-- Notification content will be inserted here -->
-        </div>
-    </div>
-</div>
-
-<!-- Include Navbar Notification System -->
-<script src="js/navbar_notifications.js"></script> 

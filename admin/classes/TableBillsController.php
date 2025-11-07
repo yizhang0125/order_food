@@ -109,6 +109,12 @@ class TableBillsController {
         $cashierInfo = $this->getCashierInfo();
         $cashierName = $cashierInfo['name'];
         
+        // Floating point tolerance for cash payments
+        if ($payment_method === 'cash' && $cash_received !== null) {
+            if ($cash_received + 0.01 < $total_amount) {
+                return "Cash received is less than the total amount due.";
+            }
+        }
         try {
             // Store discount information in session for receipt printing
             if ($discount_amount > 0) {

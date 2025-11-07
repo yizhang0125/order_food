@@ -9,7 +9,7 @@ $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
 $orderModel = new Order($db);
-$systemSettings = new SystemSettings($db);
+$systemSettings = new SystemSettings($db); // Fix: Pass database connection
 
 // Cash rounding function - rounds to nearest 0.05 (5 cents)
 if (!function_exists('customRound')) {
@@ -217,20 +217,32 @@ ob_start();
                         <span>RM <?php echo number_format($subtotal, 2); ?></span>
                     </div>
                     <?php 
-                    // Calculate tax using dynamic tax rate
-                    $tax_rate = $systemSettings->getTaxRate();
-                    $tax_amount = $subtotal * $tax_rate;
-                    $tax_name = $systemSettings->getTaxName();
-                    $tax_percent = $systemSettings->getTaxRatePercent();
+                    // Calculate service tax and SST
+                    $service_tax_rate = $systemSettings->getServiceTaxRate();
+                    $service_tax_amount = $subtotal * $service_tax_rate;
+                    $service_tax_name = $systemSettings->getServiceTaxName();
+                    $service_tax_percent = $systemSettings->getServiceTaxRatePercent();
+
+                    $sst_rate = $systemSettings->getTaxRate();
+                    $sst_amount = $subtotal * $sst_rate;
+                    $sst_name = $systemSettings->getTaxName();
+                    $sst_percent = $systemSettings->getTaxRatePercent();
                     $currency_symbol = $systemSettings->getCurrencySymbol();
+                    
+                    // Calculate total with both taxes
+                    $total_with_taxes = customRound($subtotal + $service_tax_amount + $sst_amount);
                     ?>
                     <div class="summary-item">
-                        <span><?php echo $tax_name; ?> (<?php echo $tax_percent; ?>%):</span>
-                        <span><?php echo $currency_symbol; ?> <?php echo number_format($tax_amount, 2); ?></span>
+                        <span><?php echo $service_tax_name; ?> (<?php echo $service_tax_percent; ?>%):</span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($service_tax_amount, 2); ?></span>
+                    </div>
+                    <div class="summary-item">
+                        <span><?php echo $sst_name; ?> (<?php echo $sst_percent; ?>%):</span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($sst_amount, 2); ?></span>
                     </div>
                     <div class="summary-total">
                         <span>Total:</span>
-                        <span><?php echo $currency_symbol; ?> <?php echo number_format(customRound($subtotal + $tax_amount), 2); ?></span>
+                        <span><?php echo $currency_symbol; ?> <?php echo number_format($total_with_taxes, 2); ?></span>
                     </div>
                 </div>
             </div>
@@ -603,8 +615,11 @@ $extra_js = '
             status: "' . $order['status'] . '",
             items: ' . json_encode($order['items']) . ',
             subtotal: ' . $subtotal . ',
-            tax: ' . $tax_amount . ',
-            total: ' . customRound($subtotal + $tax_amount) . ',
+            service_tax: ' . $service_tax_amount . ',
+            service_tax_percent: ' . $service_tax_percent . ',
+            sst: ' . $sst_amount . ',
+            sst_percent: ' . $sst_percent . ',
+            total: ' . $total_with_taxes . ',
             payment: ' . json_encode($payment) . '
         };
         
@@ -735,8 +750,12 @@ $extra_js = '
                         <span>RM ${orderData.subtotal.toFixed(2)}</span>
                     </div>
                     <div class="summary-row">
-                        <span>SST (6%):</span>
-                        <span>RM ${orderData.tax.toFixed(2)}</span>
+                        <span>Service Tax (${orderData.service_tax_percent}%):</span>
+                        <span>RM ${orderData.service_tax.toFixed(2)}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>SST (${orderData.sst_percent}%):</span>
+                        <span>RM ${orderData.sst.toFixed(2)}</span>
                     </div>
                     <div class="summary-row summary-total">
                         <span>Total:</span>

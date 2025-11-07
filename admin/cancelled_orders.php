@@ -37,8 +37,13 @@ if ($_SESSION['user_type'] !== 'admin' &&
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d', strtotime('-30 days'));
 
-// Get cancelled orders
+// Add debugging
+error_log("Fetching cancelled orders for dates: $start_date to $end_date");
 $cancelled_orders = $orderModel->getCancelledOrders($start_date, $end_date);
+error_log("Found " . count($cancelled_orders) . " cancelled orders");
+if (!empty($cancelled_orders)) {
+    error_log("First order details: " . json_encode($cancelled_orders[0]));
+}
 
 // Set page title
 $page_title = "Cancelled Orders";
@@ -76,10 +81,8 @@ ob_start();
                     <tr>
                         <th>Order ID</th>
                         <th>Table</th>
-                        <th>Items</th>
-                        <th>Special Instructions</th>
+                        <th>Items & Special Instructions</th>
                         <th>Total Amount</th>
-                        <th>Status</th>
                         <th>Cancelled At</th>
                         <th>Actions</th>
                     </tr>
@@ -87,104 +90,57 @@ ob_start();
                 <tbody>
                     <?php if (empty($cancelled_orders)): ?>
                     <tr>
-                        <td colspan="8" class="text-center py-4">
-                            <i class="fas fa-inbox fa-2x mb-3 text-muted d-block"></i>
-                            No cancelled orders found for the selected date range (<?php echo $start_date; ?> to <?php echo $end_date; ?>)
+                        <td colspan="6" class="text-center py-4">
+                            <div class="empty-state">
+                                <i class="fas fa-check-circle"></i>
+                                <h4>No Cancelled Orders Today</h4>
+                                <p>There are no cancelled orders for today (<?php echo date('d M Y'); ?>)</p>
+                            </div>
                         </td>
                     </tr>
                     <?php else: ?>
-                        <?php 
-                        $grouped_orders = [];
-                        // Group orders by table number AND cancellation time
-                        foreach ($cancelled_orders as $order) {
-                            // Create a key using table number AND created_at timestamp (rounded to minutes)
-                            $timestamp = strtotime($order['created_at']);
-                            $timeKey = date('Y-m-d H:i', $timestamp); // Remove seconds for grouping
-                            $key = $order['table_number'] . '_' . $timeKey;
-                            
-                            if (!isset($grouped_orders[$key])) {
-                                $grouped_orders[$key] = [
-                                    'id' => $order['id'],
-                                    'table_number' => $order['table_number'],
-                                    'items_list' => $order['items_list'],
-                                    'item_count' => $order['item_count'],
-                                    'special_instructions' => $order['special_instructions'],
-                                    'total_amount' => $order['total_amount'],
-                                    'created_at' => $order['created_at']
-                                ];
-                            }
-                        }
-
-                        // Sort by created_at date (newest first) and then by table number
-                        uasort($grouped_orders, function($a, $b) {
-                            $dateCompare = strtotime($b['created_at']) - strtotime($a['created_at']);
-                            if ($dateCompare === 0) {
-                                return $a['table_number'] - $b['table_number'];
-                            }
-                            return $dateCompare;
-                        });
-
-                        foreach ($grouped_orders as $order): 
-                        ?>
+                        <?php foreach ($cancelled_orders as $order): ?>
                         <tr>
                             <td>
-                                <span class="order-id">
-                                    #<?php echo str_pad($order['id'], 4, '0', STR_PAD_LEFT); ?>
-                                </span>
+                                <span class="order-id">#<?php echo str_pad($order['id'], 4, '0', STR_PAD_LEFT); ?></span>
                             </td>
-                            <td>Table <?php echo htmlspecialchars($order['table_number']); ?></td>
+                            <td>
+                                <span class="table-number">Table <?php echo htmlspecialchars($order['table_number']); ?></span>
+                            </td>
                             <td>
                                 <div class="order-items">
-                                    <span class="item-count"><?php echo $order['item_count']; ?> items</span>
-                                    <div class="item-details small text-muted">
-                                        <?php 
-                                        if (!empty($order['items_list'])) {
-                                            $items = explode(', ', $order['items_list']);
-                                            $itemsList = [];
-                                            foreach($items as $item) {
-                                                $itemsList[] = preg_replace('/ - Note:.*$/', '', $item);
-                                            }
-                                            echo implode(', ', $itemsList);
-                                        } else {
-                                            echo '<span class="text-danger">No items found</span>';
-                                        }
-                                        ?>
+                                    <div class="items-list">
+                                        <?php echo htmlspecialchars($order['items_list']); ?>
                                     </div>
-                                </div>
-                            </td>
-                            <td>
-                                <div class="special-instructions">
-                                    <?php 
-                                    if (!empty($order['special_instructions'])) {
-                                        foreach($order['special_instructions'] as $instruction) {
-                                            echo "<div class='instruction-item'><strong>" . htmlspecialchars($instruction['item']) . "</strong>: " . htmlspecialchars($instruction['instructions']) . "</div>";
-                                        }
-                                    } else {
-                                        echo '<span class="text-muted">No special instructions</span>';
-                                    }
-                                    ?>
+                                    <?php if (!empty($order['special_instructions'])): ?>
+                                        <div class="special-instructions-list mt-2">
+                                            <?php foreach ($order['special_instructions'] as $instruction): ?>
+                                                <div class="special-instruction">
+                                                    <span class="item-name"><?php echo htmlspecialchars($instruction['item']); ?> 
+                                                    (×<?php echo $instruction['quantity']; ?>)</span>
+                                                    <span class="instruction-text">
+                                                        <i class="fas fa-info-circle text-primary"></i>
+                                                        <?php echo htmlspecialchars($instruction['instructions']); ?>
+                                                    </span>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                             <td>
                                 <span class="order-amount">RM <?php echo number_format(customRound($order['total_amount']), 2); ?></span>
                             </td>
                             <td>
-                                <span class="status-badge cancelled">
-                                    <i class="fas fa-times-circle"></i>
-                                    Cancelled
-                                </span>
-                            </td>
-                            <td>
-                                <span class="order-date">
-                                    <?php 
-                                    echo date('d M Y, h:i A', strtotime($order['created_at']));
-                                    ?>
-                                </span>
+                                <span class="cancelled-time">
+                                    <i class="fas fa-clock"></i>
+                                    <?php echo date('h:i A', strtotime($order['cancelled_at'])); ?>
+                            </span>
                             </td>
                             <td>
                                 <a href="view_order.php?id=<?php echo $order['id']; ?>" 
                                    class="btn btn-sm btn-outline-primary">
-                                    <i class="fas fa-eye"></i> View
+                                    <i class="fas fa-eye"></i> View Details
                                 </a>
                             </td>
                         </tr>
@@ -193,20 +149,41 @@ ob_start();
                 </tbody>
             </table>
         </div>
-
-        <div class="table-footer">
-            <div class="total-orders">
-                Total Cancelled Orders: <?php echo count($cancelled_orders); ?>
-            </div>
-            <a href="export_cancelled_orders.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>" 
-               class="export-btn"
-               target="_blank">
-                <i class="fas fa-download"></i>
-                Export to Excel
-            </a>
-        </div>
     </div>
 </div>
+
+<style>
+    .special-instructions-list {
+        margin-top: 0.5rem;
+        padding-left: 1rem;
+        border-left: 3px solid #e2e8f0;
+    }
+    
+    .special-instruction {
+        font-size: 0.875rem;
+        color: #64748b;
+        margin-bottom: 0.25rem;
+    }
+    
+    .special-instruction .item-name {
+        font-weight: 600;
+        color: #334155;
+    }
+    
+    .special-instruction .instruction-text {
+        margin-left: 0.5rem;
+        color: #dc2626;
+    }
+    
+    .cancelled-time {
+        color: #64748b;
+        font-size: 0.875rem;
+    }
+    
+    .cancelled-time i {
+        margin-right: 0.25rem;
+    }
+</style>
 
 <?php
 $content = ob_get_clean();
@@ -480,10 +457,8 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "true") {
                 <tr>
                     <th>Order ID</th>
                     <th>Table</th>
-                    <th>Items</th>
-                    <th>Special Instructions</th>
+                    <th>Items & Special Instructions</th>
                     <th>Total Amount</th>
-                    <th>Status</th>
                     <th>Cancelled At</th>
                     <th>Actions</th>
                 </tr>
@@ -491,104 +466,57 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "true") {
             <tbody>
                 <?php if (empty($cancelled_orders)): ?>
                 <tr>
-                    <td colspan="8" class="text-center py-4">
-                        <i class="fas fa-inbox fa-2x mb-3 text-muted d-block"></i>
-                        No cancelled orders found for the selected date range (<?php echo $start_date; ?> to <?php echo $end_date; ?>)
+                    <td colspan="6" class="text-center py-4">
+                        <div class="empty-state">
+                            <i class="fas fa-check-circle"></i>
+                            <h4>No Cancelled Orders Today</h4>
+                            <p>There are no cancelled orders for today (<?php echo date('d M Y'); ?>)</p>
+                        </div>
                     </td>
                 </tr>
                 <?php else: ?>
-                    <?php 
-                    $grouped_orders = [];
-                    // Group orders by table number AND cancellation time
-                    foreach ($cancelled_orders as $order) {
-                        // Create a key using table number AND created_at timestamp (rounded to minutes)
-                        $timestamp = strtotime($order['created_at']);
-                        $timeKey = date('Y-m-d H:i', $timestamp); // Remove seconds for grouping
-                        $key = $order['table_number'] . '_' . $timeKey;
-                        
-                        if (!isset($grouped_orders[$key])) {
-                            $grouped_orders[$key] = [
-                                'id' => $order['id'],
-                                'table_number' => $order['table_number'],
-                                'items_list' => $order['items_list'],
-                                'item_count' => $order['item_count'],
-                                'special_instructions' => $order['special_instructions'],
-                                'total_amount' => $order['total_amount'],
-                                'created_at' => $order['created_at']
-                            ];
-                        }
-                    }
-
-                    // Sort by created_at date (newest first) and then by table number
-                    uasort($grouped_orders, function($a, $b) {
-                        $dateCompare = strtotime($b['created_at']) - strtotime($a['created_at']);
-                        if ($dateCompare === 0) {
-                            return $a['table_number'] - $b['table_number'];
-                        }
-                        return $dateCompare;
-                    });
-
-                    foreach ($grouped_orders as $order): 
-                    ?>
+                    <?php foreach ($cancelled_orders as $order): ?>
                     <tr>
                         <td>
-                            <span class="order-id">
-                                #<?php echo str_pad($order['id'], 4, '0', STR_PAD_LEFT); ?>
-                            </span>
+                            <span class="order-id">#<?php echo str_pad($order['id'], 4, '0', STR_PAD_LEFT); ?></span>
                         </td>
-                        <td>Table <?php echo htmlspecialchars($order['table_number']); ?></td>
+                        <td>
+                            <span class="table-number">Table <?php echo htmlspecialchars($order['table_number']); ?></span>
+                        </td>
                         <td>
                             <div class="order-items">
-                                <span class="item-count"><?php echo $order['item_count']; ?> items</span>
-                                <div class="item-details small text-muted">
-                                    <?php 
-                                    if (!empty($order['items_list'])) {
-                                        $items = explode(', ', $order['items_list']);
-                                        $itemsList = [];
-                                        foreach($items as $item) {
-                                            $itemsList[] = preg_replace('/ - Note:.*$/', '', $item);
-                                        }
-                                        echo implode(', ', $itemsList);
-                                    } else {
-                                        echo '<span class="text-danger">No items found</span>';
-                                    }
-                                    ?>
+                                <div class="items-list">
+                                    <?php echo htmlspecialchars($order['items_list']); ?>
                                 </div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="special-instructions">
-                                <?php 
-                                if (!empty($order['special_instructions'])) {
-                                    foreach($order['special_instructions'] as $instruction) {
-                                        echo "<div class='instruction-item'><strong>" . htmlspecialchars($instruction['item']) . "</strong>: " . htmlspecialchars($instruction['instructions']) . "</div>";
-                                    }
-                                } else {
-                                    echo '<span class="text-muted">No special instructions</span>';
-                                }
-                                ?>
+                                <?php if (!empty($order['special_instructions'])): ?>
+                                    <div class="special-instructions-list mt-2">
+                                        <?php foreach ($order['special_instructions'] as $instruction): ?>
+                                            <div class="special-instruction">
+                                                <span class="item-name"><?php echo htmlspecialchars($instruction['item']); ?> 
+                                                (×<?php echo $instruction['quantity']; ?>)</span>
+                                                <span class="instruction-text">
+                                                    <i class="fas fa-info-circle text-primary"></i>
+                                                    <?php echo htmlspecialchars($instruction['instructions']); ?>
+                                                </span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         </td>
                         <td>
                             <span class="order-amount">RM <?php echo number_format(customRound($order['total_amount']), 2); ?></span>
                         </td>
                         <td>
-                            <span class="status-badge cancelled">
-                                <i class="fas fa-times-circle"></i>
-                                Cancelled
-                            </span>
-                        </td>
-                        <td>
-                            <span class="order-date">
-                                <?php 
-                                echo date('d M Y, h:i A', strtotime($order['created_at']));
-                                ?>
+                            <span class="cancelled-time">
+                                <i class="fas fa-clock"></i>
+                                <?php echo date('h:i A', strtotime($order['cancelled_at'])); ?>
                             </span>
                         </td>
                         <td>
                             <a href="view_order.php?id=<?php echo $order['id']; ?>" 
                                class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-eye"></i> View
+                                <i class="fas fa-eye"></i> View Details
                             </a>
                         </td>
                     </tr>
@@ -597,26 +525,10 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "true") {
             </tbody>
         </table>
     </div>
-
-    <div class="table-footer">
-        <div class="total-orders">
-            Total Cancelled Orders: <?php echo count($cancelled_orders); ?>
-        </div>
-        <a href="export_cancelled_orders.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>" 
-           class="export-btn"
-           target="_blank">
-            <i class="fas fa-download"></i>
-            Export to Excel
-        </a>
-    </div>
     <?php
     exit;
 }
 
 // Include the layout
 include 'includes/layout.php';
-?> 
-
-// Include the layout
-include 'includes/layout.php';
-?> 
+?>

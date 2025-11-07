@@ -14,13 +14,7 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Check authentication
-if (!isset($_SESSION['user_id'])) {
-    ob_end_clean();
-    http_response_code(401);
-    echo "Unauthorized";
-    exit();
-}
+
 
 // Get date range from query parameters
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');

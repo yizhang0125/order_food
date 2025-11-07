@@ -79,11 +79,11 @@ ob_start();
                 <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: var(--success);">
                     <i class="fas fa-dollar-sign"></i>
                 </div>
-                <h6 class="stat-title">Today's Revenue</h6>
-                <div class="stat-value">RM <?php echo number_format($stats['total_revenue'] ?? 0, 2); ?></div>
+                <h6 class="stat-title">Total Daily Sales</h6>
+                <div class="stat-value">RM <?php echo number_format($stats['total_daily_sales'] ?? 0, 2); ?></div>
                 <div class="stat-change positive">
-                    <i class="fas fa-arrow-up"></i>
-                    <span>8.2% vs yesterday</span>
+                    <i class="fas fa-info-circle"></i>
+                    <span>Total sales for today</span>
                 </div>
             </div>
         </div>

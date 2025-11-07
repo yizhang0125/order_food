@@ -185,6 +185,8 @@ try {
               COUNT(DISTINCT CASE WHEN o.status = 'completed' AND DATE(o.created_at) = CURDATE() THEN o.id END) as today_orders,
               COUNT(DISTINCT CASE WHEN qc.is_active = 1 AND (qc.expires_at IS NULL OR qc.expires_at > NOW()) THEN qc.id END) as active_qr_codes,
               CASE 
+                  -- If table is inactive, it's inactive
+                  WHEN t.status = 'inactive' THEN 'inactive'
                   -- If no QR code exists for this table, it's available
                   WHEN NOT EXISTS (
                       SELECT 1 FROM qr_codes qc2 
@@ -224,7 +226,6 @@ try {
               FROM tables t
               LEFT JOIN orders o ON t.id = o.table_id
               LEFT JOIN qr_codes qc ON t.id = qc.table_id
-              WHERE t.status = 'active'
               GROUP BY t.id
               ORDER BY t.table_number";
     
@@ -288,6 +289,9 @@ ob_start();
                         <button type="button" class="filter-btn" data-filter="occupied">
                             <i class="fas fa-exclamation-triangle"></i>Occupied
                         </button>
+                        <button type="button" class="filter-btn" data-filter="inactive">
+                            <i class="fas fa-times-circle"></i>Inactive
+                        </button>
                     </div>
                 </div>
             </div>
@@ -306,7 +310,7 @@ ob_start();
                 $table_status = $table['table_status'];
                 $is_occupied = $table_status === 'occupied';
                 $is_available = $table_status === 'available';
-                $is_inactive = $table['status'] === 'inactive';
+                $is_inactive = $table['status'] === 'inactive' || $table_status === 'inactive';
             ?>
             <div class="table-card <?php echo $table_status; ?>" 
                  data-status="<?php echo $table['status']; ?>" 
@@ -361,6 +365,13 @@ ob_start();
                             <small style="display: block; color: #10b981; font-size: 0.75rem; margin-top: 0.25rem; font-weight: 500;">
                                 <i class="fas fa-check-circle"></i>
                                 QR code active - Ready for customers
+                            </small>
+                        </div>
+                        <?php elseif ($is_inactive): ?>
+                        <div class="inactive-info">
+                            <small style="display: block; color: #6b7280; font-size: 0.75rem; margin-top: 0.25rem; font-weight: 500;">
+                                <i class="fas fa-times-circle"></i>
+                                Table is inactive - Not available for customers
                             </small>
                         </div>
                         <?php endif; ?>
@@ -688,6 +699,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 } else if (filter === "available" && tableStatus === "available") {
                     shouldShow = true;
                 } else if (filter === "occupied" && tableStatus === "occupied") {
+                    shouldShow = true;
+                } else if (filter === "inactive" && cardStatus === "inactive") {
                     shouldShow = true;
                 }
                 

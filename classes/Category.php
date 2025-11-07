@@ -195,13 +195,51 @@ class Category extends Model {
     }
     
     /**
-     * Update a category with proper timestamps
+     * Update a category with enhanced error logging
      */
     public function update($id, $data) {
-        // Add updated timestamp
-        $data['updated_at'] = date('Y-m-d H:i:s');
-        
-        return parent::update($id, $data);
+        try {
+            // Log update attempt
+            error_log("Attempting to update category ID: $id with data: " . json_encode($data));
+
+            // Validate data before update
+            $errors = $this->validateCategoryData($data);
+            if (!empty($errors)) {
+                error_log("Validation failed for category update: " . implode(", ", $errors));
+                return false;
+            }
+
+            // Check if category exists
+            $existing = $this->getById($id);
+            if (!$existing) {
+                error_log("Category not found with ID: $id");
+                return false;
+            }
+
+            // Check for duplicate name
+            if (isset($data['name']) && $this->nameExists($data['name'], $id)) {
+                error_log("Category name already exists: {$data['name']}");
+                return false;
+            }
+
+            // Add updated timestamp
+            $data['updated_at'] = date('Y-m-d H:i:s');
+            
+            // Perform update
+            $result = parent::update($id, $data);
+            
+            // Log result
+            error_log("Category update result for ID $id: " . ($result ? "Success" : "Failed"));
+            
+            return $result;
+
+        } catch (PDOException $e) {
+            error_log("Database error during category update: " . $e->getMessage());
+            return false;
+        } catch (Exception $e) {
+            error_log("Unexpected error during category update: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -260,4 +298,4 @@ class Category extends Model {
         return $this->db->lastInsertId();
     }
 }
-?> 
+?>
