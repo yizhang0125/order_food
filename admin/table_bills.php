@@ -1,4 +1,4 @@
-    <?php
+<?php
     session_start();
     require_once(__DIR__ . '/../config/Database.php');
     require_once(__DIR__ . '/classes/TableBillsController.php');
@@ -41,39 +41,51 @@
     // Process payment if submitted
     $error_message = null;
     if (isset($_POST['process_payment'])) {
-        $order_ids = explode(',', $_POST['order_ids']);
-        $total_amount = $_POST['amount'];
-        $payment_method = $_POST['payment_method'];
-        $cash_received = $_POST['cash_received'] ?? null;
-        $tng_reference = $_POST['tng_reference'] ?? null;
-        
-        // Handle discount if applied
-        $discount_amount = 0;
-        $discount_type = null;
-        $discount_reason = null;
-        
-        if (isset($_POST['discount_amount']) && !empty($_POST['discount_amount'])) {
-            // Check if user has permission to apply discounts
-            if (!$can_apply_discounts) {
-                $error_message = "You do not have permission to apply discounts.";
-            } elseif (!$discounts_enabled) {
-                $error_message = "Discount system is currently disabled.";
-            } else {
-                $discount_amount = floatval($_POST['discount_amount']);
-                $discount_type = $_POST['discount_type'] ?? 'custom';
-                $discount_reason = $_POST['discount_reason'] ?? '';
-                
-                // Validate discount amount
-                if ($discount_amount > 0 && $discount_amount <= $total_amount) {
-                    $total_amount = $total_amount - $discount_amount;
+        // Normalize posted order IDs to an array of ints
+        $raw_ids = $_POST['order_ids'] ?? '';
+        if (is_array($raw_ids)) {
+            $order_ids = array_values(array_filter(array_map('intval', $raw_ids)));
+        } else {
+            // string "1,2,3" -> array [1,2,3]; trim and cast
+            $order_ids = array_values(array_filter(array_map('intval', array_map('trim', explode(',', $raw_ids)))));
+        }
+
+        if (empty($order_ids)) {
+            $error_message = "No valid orders selected for payment.";
+        } else {
+            $total_amount = floatval($_POST['amount']);
+            $payment_method = $_POST['payment_method'];
+            $cash_received = $_POST['cash_received'] ?? null;
+            $tng_reference = $_POST['tng_reference'] ?? null;
+            
+            // Handle discount if applied
+            $discount_amount = 0;
+            $discount_type = null;
+            $discount_reason = null;
+            
+            if (isset($_POST['discount_amount']) && !empty($_POST['discount_amount'])) {
+                // Check if user has permission to apply discounts
+                if (!$can_apply_discounts) {
+                    $error_message = "You do not have permission to apply discounts.";
+                } elseif (!$discounts_enabled) {
+                    $error_message = "Discount system is currently disabled.";
                 } else {
-                    $error_message = "Invalid discount amount";
+                    $discount_amount = floatval($_POST['discount_amount']);
+                    $discount_type = $_POST['discount_type'] ?? 'custom';
+                    $discount_reason = $_POST['discount_reason'] ?? '';
+                    
+                    // Validate discount amount
+                    if ($discount_amount > 0 && $discount_amount <= $total_amount) {
+                        $total_amount = $total_amount - $discount_amount;
+                    } else {
+                        $error_message = "Invalid discount amount";
+                    }
                 }
             }
-        }
-        
-        if (!$error_message) {
-            $error_message = $controller->processPayment($order_ids, $total_amount, $payment_method, $cash_received, $tng_reference, $discount_amount, $discount_type, $discount_reason);
+            
+            if (!$error_message) {
+                $error_message = $controller->processPayment($order_ids, $total_amount, $payment_method, $cash_received, $tng_reference, $discount_amount, $discount_type, $discount_reason);
+            }
         }
     }
 

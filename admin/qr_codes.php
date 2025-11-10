@@ -773,7 +773,7 @@ function printQRCode() {
             </form>
         </div>
     </div>
-</div>
+==</div>
 
 <!-- Delete Table Modal -->
 <div class="modal fade" id="deleteTableModal<?php echo $table['id']; ?>" tabindex="-1">

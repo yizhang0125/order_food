@@ -21,10 +21,51 @@ class PaymentController {
     }
     
     /**
+     * Normalize and validate order IDs input.
+     * Accepts array or comma-separated string. Returns array of unique ints.
+     * Throws Exception if no valid IDs found.
+     */
+    private function normalizeOrderIds($order_ids) {
+        if (is_null($order_ids)) {
+            throw new Exception("No order IDs provided");
+        }
+
+        // If string like "1,2,3"
+        if (!is_array($order_ids)) {
+            if (is_string($order_ids)) {
+                $order_ids = array_filter(array_map('trim', explode(',', $order_ids)), function($v){ return $v !== ''; });
+            } else {
+                throw new Exception("Invalid order IDs format");
+            }
+        }
+
+        // Map to integers and filter zeros / non-numeric
+        $order_ids = array_map(function($id){
+            return intval($id);
+        }, $order_ids);
+
+        $order_ids = array_filter($order_ids, function($id){
+            return $id > 0;
+        });
+
+        // Unique and reindex
+        $order_ids = array_values(array_unique($order_ids));
+
+        if (count($order_ids) === 0) {
+            throw new Exception("No valid order IDs provided");
+        }
+
+        return $order_ids;
+    }
+
+    /**
      * Process TNG Pay payment for multiple orders
      */
     public function processTNGPayment($order_ids, $total_amount, $cashier_name, $tng_reference = null, $discount_amount = 0, $discount_type = null, $discount_reason = null) {
         try {
+            // Normalize and validate order IDs
+            $order_ids = $this->normalizeOrderIds($order_ids);
+
             $this->db->beginTransaction();
             
             $payment_id = null;
@@ -37,15 +78,31 @@ class PaymentController {
                 $order_amount_stmt = $this->db->prepare($order_amount_sql);
                 $order_amount_stmt->execute([$order_id]);
                 $order_data = $order_amount_stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$order_data) {
+                    throw new Exception("Order #{$order_id} not found or already expired (QR/order invalid). Payment aborted.");
+                }
+
                 $order_amount = $order_data['total_amount'];
                 $table_number = $order_data['table_number'];
-                $current_datetime = date('Y-m-d H:i:s');
+
+                // use Malaysia datetime
+                $current_datetime = $this->getMalaysiaNow();
                 
                 // Insert into payments table with TNG Pay details
                 $payment_sql = "INSERT INTO payments (order_id, amount, payment_status, payment_date, payment_method, tng_reference, processed_by_name, discount_amount, discount_type, discount_reason) 
                                VALUES (?, ?, 'completed', ?, 'tng_pay', ?, ?, ?, ?, ?)";
                 $payment_stmt = $this->db->prepare($payment_sql);
-                $payment_success = $payment_stmt->execute([$order_id, $order_amount, $tng_reference, $cashier_name, $discount_amount, $discount_type, $discount_reason]);
+                $payment_success = $payment_stmt->execute([
+                    $order_id,
+                    $order_amount,
+                    $current_datetime,      // payment_date (Malaysia)
+                    $tng_reference,
+                    $cashier_name,
+                    $discount_amount,
+                    $discount_type,
+                    $discount_reason
+                ]);
                 
                 // Get payment details for receipt
                 if (!$payment_id) {
@@ -73,7 +130,7 @@ class PaymentController {
             return $payment_id;
             
         } catch (Exception $e) {
-            $this->db->rollBack();
+            if ($this->db->inTransaction()) $this->db->rollBack();
             throw $e;
         }
     }
@@ -83,6 +140,9 @@ class PaymentController {
      */
     public function processPayment($order_ids, $total_amount, $cash_received, $cashier_name, $discount_amount = 0, $discount_type = null, $discount_reason = null) {
         try {
+            // Normalize and validate order IDs
+            $order_ids = $this->normalizeOrderIds($order_ids);
+
             $this->db->beginTransaction();
             
             $change = $cash_received - $total_amount;
@@ -96,15 +156,32 @@ class PaymentController {
                 $order_amount_stmt = $this->db->prepare($order_amount_sql);
                 $order_amount_stmt->execute([$order_id]);
                 $order_data = $order_amount_stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$order_data) {
+                    throw new Exception("Order #{$order_id} not found or already expired (QR/order invalid). Payment aborted.");
+                }
+
                 $order_amount = $order_data['total_amount'];
                 $table_number = $order_data['table_number'];
-                $current_datetime = date('Y-m-d H:i:s');
+
+                // use Malaysia datetime
+                $current_datetime = $this->getMalaysiaNow();
                 
                 // Insert into payments table with individual order amount
                 $payment_sql = "INSERT INTO payments (order_id, amount, payment_status, payment_date, payment_method, cash_received, change_amount, processed_by_name, discount_amount, discount_type, discount_reason) 
                                VALUES (?, ?, 'completed', ?, 'cash', ?, ?, ?, ?, ?, ?)";
                 $payment_stmt = $this->db->prepare($payment_sql);
-                $payment_success = $payment_stmt->execute([$order_id, $order_amount, $cash_received, $change, $cashier_name, $discount_amount, $discount_type, $discount_reason]);
+                $payment_success = $payment_stmt->execute([
+                    $order_id,
+                    $order_amount,
+                    $current_datetime,   // payment_date (Malaysia)
+                    $cash_received,
+                    $change,
+                    $cashier_name,
+                    $discount_amount,
+                    $discount_type,
+                    $discount_reason
+                ]);
                 
                 // Get payment details for receipt
                 if (!$payment_id) {
@@ -132,7 +209,7 @@ class PaymentController {
             return $payment_id;
             
         } catch (Exception $e) {
-            $this->db->rollBack();
+            if ($this->db->inTransaction()) $this->db->rollBack();
             throw $e;
         }
     }
@@ -379,13 +456,16 @@ class PaymentController {
      */
     public function prepareTNGReceiptData($order_ids, $payment_id, $tng_reference = null) {
         try {
+            $order_ids = $this->normalizeOrderIds($order_ids);
+
+            $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
             $receipt_sql = "SELECT o.*, t.table_number,
                           GROUP_CONCAT(CONCAT(m.name, ':', oi.quantity, ':', m.price) SEPARATOR '||') as item_details
                           FROM orders o 
                           LEFT JOIN tables t ON o.table_id = t.id
                           LEFT JOIN order_items oi ON o.id = oi.order_id
                           LEFT JOIN menu_items m ON oi.menu_item_id = m.id
-                          WHERE o.id IN (" . implode(',', array_fill(0, count($order_ids), '?')) . ")
+                          WHERE o.id IN ($placeholders)
                           GROUP BY o.id";
             $receipt_stmt = $this->db->prepare($receipt_sql);
             $receipt_stmt->execute($order_ids);
@@ -430,7 +510,7 @@ class PaymentController {
                 'total_amount' => round($total_with_tax, 2),
                 'payment_method' => 'TNG Pay',
                 'tng_reference' => $tng_reference,
-                'payment_date' => date('Y-m-d H:i:s')
+                'payment_date' => $this->getMalaysiaNow() // use Malaysia datetime
             ];
             
         } catch (Exception $e) {
@@ -444,13 +524,16 @@ class PaymentController {
      */
     public function prepareReceiptData($order_ids, $payment_id, $cash_received, $change) {
         try {
+            $order_ids = $this->normalizeOrderIds($order_ids);
+
+            $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
             $receipt_sql = "SELECT o.*, t.table_number,
                           GROUP_CONCAT(CONCAT(m.name, ':', oi.quantity, ':', m.price) SEPARATOR '||') as item_details
                           FROM orders o 
                           LEFT JOIN tables t ON o.table_id = t.id
                           LEFT JOIN order_items oi ON o.id = oi.order_id
                           LEFT JOIN menu_items m ON oi.menu_item_id = m.id
-                          WHERE o.id IN (" . implode(',', array_fill(0, count($order_ids), '?')) . ")
+                          WHERE o.id IN ($placeholders)
                           GROUP BY o.id";
             $receipt_stmt = $this->db->prepare($receipt_sql);
             $receipt_stmt->execute($order_ids);
@@ -496,7 +579,7 @@ class PaymentController {
                 'payment_method' => 'Cash',
                 'cash_received' => round($cash_received, 2),
                 'change_amount' => round($change, 2),
-                'payment_date' => date('Y-m-d H:i:s')
+                'payment_date' => $this->getMalaysiaNow() // use Malaysia datetime
             ];
             
         } catch (Exception $e) {
@@ -540,9 +623,10 @@ class PaymentController {
             }
             $_SESSION['auto_print_payment_id'] = $payment_id;
             $_SESSION['auto_print_timestamp'] = time();
+            $_SESSION['auto_print_datetime'] = $this->getMalaysiaNow(); // Malaysia datetime
             
             // Log the auto-print trigger
-            error_log("Auto-print triggered for payment ID: " . $payment_id);
+            error_log("Auto-print triggered for payment ID: " . $payment_id . " at " . $_SESSION['auto_print_datetime']);
             
         } catch (Exception $e) {
             error_log("Error in PaymentController::autoPrintReceipt: " . $e->getMessage());
@@ -571,12 +655,12 @@ class PaymentController {
                 'cash_received' => $cash_received,
                 'change_amount' => $change_amount,
                 'tng_reference' => $tng_reference,
-                'created_at' => date('Y-m-d H:i:s'),
+                'created_at' => $this->getMalaysiaNow(), // Malaysia datetime
                 'timestamp' => time()
             ];
             
             // Log the notification trigger
-            error_log("Payment notification triggered for payment ID: " . $payment_id . " - Table: " . $table_number . " - Amount: " . $amount);
+            error_log("Payment notification triggered for payment ID: " . $payment_id . " - Table: " . $table_number . " - Amount: " . $amount . " at " . $_SESSION['payment_notification']['created_at']);
             
         } catch (Exception $e) {
             error_log("Error in PaymentController::triggerPaymentNotification: " . $e->getMessage());
@@ -843,6 +927,20 @@ class PaymentController {
         }
         
         return $html;
+    }
+    
+    // Add this helper to provide Malaysia datetime consistently
+    private function getMalaysiaNow() {
+        // Return current datetime in Asia/Kuala_Lumpur timezone formatted for MySQL DATETIME
+        try {
+            $tz = new DateTimeZone('Asia/Kuala_Lumpur');
+            $dt = new DateTime('now', $tz);
+            return $dt->format('Y-m-d H:i:s');
+        } catch (Exception $e) {
+            // Fallback to server time if timezone creation fails
+            error_log("getMalaysiaNow error: " . $e->getMessage());
+            return date('Y-m-d H:i:s');
+        }
     }
 }
 ?>

@@ -151,8 +151,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Get all categories with item counts
-$categories = $categoryModel->getCategoryWithItemCount();
+// --- NEW: read status/search from query and fetch categories accordingly ---
+$status = isset($_GET['status']) ? $_GET['status'] : 'all';
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+// --- NEW: Fetch categories based on filter/search ---
+if (!empty($search)) {
+    // Search has priority over status filter
+    $categories = $categoryModel->searchCategories($search);
+} elseif ($status === 'active') {
+    $categories = $categoryModel->getCategoryWithItemCountByStatus('active');
+} elseif ($status === 'inactive') {
+    $categories = $categoryModel->getCategoryWithItemCountByStatus('inactive');
+} else {
+    $categories = $categoryModel->getCategoryWithItemCount();
+}
+
+// Always fetch full list to compute badges/counts
+$allCategories = $categoryModel->getCategoryWithItemCount();
+$totalCount = count($allCategories);
+$activeCount = count(array_filter($allCategories, function($cat) { return $cat['status'] === 'active'; }));
+$inactiveCount = $totalCount - $activeCount;
 
 // Include external CSS file
 $extra_css = '<link rel="stylesheet" href="css/categories.css">';
@@ -191,26 +210,19 @@ ob_start();
     <!-- Status Filters -->
     <div class="status-filters-container">
         <div class="status-filters">
-            <?php
-            // Calculate counts
-            $totalCount = count($categories);
-            $activeCount = count(array_filter($categories, function($cat) { return $cat['status'] === 'active'; }));
-            $inactiveCount = $totalCount - $activeCount;
-            ?>
-            
-            <div class="status-filter active" data-status="all">
+            <div class="status-filter <?php echo $status === 'all' ? 'active' : ''; ?>" data-status="all">
                 <i class="fas fa-th-large"></i>
                 All Categories
                 <span class="filter-count"><?php echo $totalCount; ?></span>
             </div>
             
-            <div class="status-filter" data-status="active">
+            <div class="status-filter <?php echo $status === 'active' ? 'active' : ''; ?>" data-status="active">
                 <i class="fas fa-check-circle"></i>
                 Active
                 <span class="filter-count"><?php echo $activeCount; ?></span>
             </div>
             
-            <div class="status-filter" data-status="inactive">
+            <div class="status-filter <?php echo $status === 'inactive' ? 'active' : ''; ?>" data-status="inactive">
                 <i class="fas fa-times-circle"></i>
                 Inactive
                 <span class="filter-count"><?php echo $inactiveCount; ?></span>
@@ -222,7 +234,7 @@ ob_start();
     <div class="search-section">
         <div class="search-box">
             <i class="fas fa-search"></i>
-            <input type="text" id="categorySearch" placeholder="Search categories by name or description...">
+            <input type="text" id="categorySearch" name="search" placeholder="Search categories by name or description..." value="<?php echo htmlspecialchars($search); ?>">
         </div>
     </div>
 
@@ -404,6 +416,56 @@ $content = ob_get_clean();
 // Add JavaScript for category management
 $extra_js = '<script src="js/categories.js"></script>';
 
+// Add JS to wire filters and search (appended to existing $extra_js or new variable)
+$extra_js .= '
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // Status filter clicks
+    document.querySelectorAll(".status-filter").forEach(function(el) {
+        el.addEventListener("click", function() {
+            var status = this.dataset.status;
+            var params = new URLSearchParams(window.location.search);
+            if (status === "all") {
+                params.delete("status");
+            } else {
+                params.set("status", status);
+            }
+            var searchVal = document.getElementById("categorySearch").value.trim();
+            if (searchVal.length) {
+                params.set("search", searchVal);
+            } else {
+                params.delete("search");
+            }
+            window.location.search = params.toString();
+        });
+    });
+
+    // Search input - submit on Enter
+    var searchInput = document.getElementById("categorySearch");
+    if (searchInput) {
+        searchInput.addEventListener("keydown", function(e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                var params = new URLSearchParams(window.location.search);
+                var val = this.value.trim();
+                if (val.length) {
+                    params.set("search", val);
+                } else {
+                    params.delete("search");
+                }
+                // preserve status filter if present
+                var statusFilter = document.querySelector(".status-filter.active");
+                if (statusFilter && statusFilter.dataset.status !== "all") {
+                    params.set("status", statusFilter.dataset.status);
+                }
+                window.location.search = params.toString();
+            }
+        });
+    }
+});
+</script>
+';
+
 // Include the layout template
-include 'includes/layout.php';
+include "includes/layout.php";
 ?>

@@ -34,7 +34,7 @@
     }
 
     .page-title i {
-        color: var(--danger);
+        color: var(--success);
     }
 
     .date-filter {
@@ -60,7 +60,7 @@
 
     .filter-btn {
         padding: 0.75rem 1.5rem;
-        background: var(--danger);
+        background: var(--success);
         color: white;
         border: none;
         border-radius: 12px;
@@ -73,7 +73,7 @@
 
     .filter-btn:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2);
+        box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);
     }
 
     .orders-container {
@@ -109,7 +109,7 @@
 
     .order-id {
         font-weight: 600;
-        color: var(--danger);
+        color: var(--primary);
     }
 
     .status-badge {
@@ -120,11 +120,8 @@
         border-radius: 20px;
         font-weight: 500;
         font-size: 0.875rem;
-    }
-
-    .status-badge.cancelled {
-        background: rgba(239, 68, 68, 0.1);
-        color: var(--danger);
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
     }
 
     .order-amount {
@@ -134,16 +131,6 @@
 
     .order-date {
         color: var(--gray-500);
-    }
-
-    .reason-text {
-        color: var(--gray-600);
-        font-size: 0.875rem;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        max-width: 200px;
     }
 
     .table-footer {
@@ -162,7 +149,7 @@
 
     .export-btn {
         padding: 0.75rem 1.5rem;
-        background: var(--danger);
+        background: var(--primary);
         color: white;
         border: none;
         border-radius: 12px;
@@ -171,13 +158,11 @@
         align-items: center;
         gap: 0.5rem;
         transition: all 0.3s ease;
-        text-decoration: none;
     }
 
     .export-btn:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2);
-        color: white;
+        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
     }
 
     .order-items {
@@ -215,4 +200,32 @@
             display: block;
             overflow-x: auto;
         }
+    }
+
+    /* Add styles for special instructions */
+    .special-instructions {
+        max-width: 250px;
+        font-size: 0.9rem;
+    }
+
+    .instruction-item {
+        background: rgba(16, 185, 129, 0.1); /* Using success color for completed orders */
+        padding: 0.5rem;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+    }
+
+    .instruction-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .instruction-item strong {
+        color: var(--success);
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+
+    .status-badge.completed {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
     }
