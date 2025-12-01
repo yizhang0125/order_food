@@ -14,10 +14,10 @@ class Dashboard {
                 (SELECT COUNT(*) FROM orders WHERE status = 'completed' AND DATE(created_at) = CURDATE()) as completed_orders,
                 (SELECT COUNT(*) FROM orders WHERE status = 'processing' AND DATE(created_at) = CURDATE()) as processing_orders,
                 (SELECT COUNT(*) FROM orders WHERE status = 'pending' AND DATE(created_at) = CURDATE()) as pending_orders,
-                (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE DATE(created_at) = CURDATE()) as total_revenue,
+                (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(payment_date) = CURDATE() AND payment_status = 'completed') as total_daily_sales,
                 (SELECT COUNT(*) FROM tables) as total_tables,
                 (SELECT COUNT(*) FROM menu_items WHERE status = 'available') as total_items";
-            
+
             $stmt = $this->db->prepare($statsQuery);
             $stmt->execute();
             $stats = $stmt->fetch(PDO::FETCH_ASSOC);
