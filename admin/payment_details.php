@@ -118,7 +118,7 @@ try {
                 'latest_payment_amount' => 0
             ];
         }
-        
+    
         // Prefer the stored payment amount (this represents the actual paid amount,
         // which is important when bills are merged). Fall back to recalculation
         // from item details if `p.amount` is not present or zero.
@@ -228,6 +228,13 @@ try {
     
     // Sort monthly totals by month (newest first)
     krsort($monthly_totals);
+    
+    // Remove specific month card (e.g., November 2025) if present
+    foreach ($monthly_totals as $mkey => $mdata) {
+        if (isset($mdata['month']) && strtolower($mdata['month']) === 'november 2025') {
+            unset($monthly_totals[$mkey]);
+        }
+    }
     
 } catch (Exception $e) {
     $error_message = $e->getMessage();
