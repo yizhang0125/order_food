@@ -283,11 +283,12 @@ if (!$has_permissions) {
             </li>
             <?php endif; ?>
 
-            <?php if ($_SESSION['user_type'] === 'admin' || 
-                      (isset($_SESSION['staff_permissions']) && 
-                       (in_array('table_management', $_SESSION['staff_permissions']) || 
-                        in_array('all', $_SESSION['staff_permissions']))
-                      )): ?>
+                        <?php if ($_SESSION['user_type'] === 'admin' || 
+                                            (isset($_SESSION['staff_permissions']) && 
+                                             (in_array('table_management', $_SESSION['staff_permissions']) || 
+                                                in_array('table_management_qr', $_SESSION['staff_permissions']) || 
+                                                in_array('all', $_SESSION['staff_permissions']))
+                                            )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'tables.php' ? 'active' : ''; ?>" href="tables.php">
                     <i class="fas fa-chair"></i>
@@ -309,11 +310,12 @@ if (!$has_permissions) {
             </li>
             <?php endif; ?>
 
-            <?php if ($_SESSION['user_type'] === 'admin' || 
-                      (isset($_SESSION['staff_permissions']) && 
-                       (in_array('table_management', $_SESSION['staff_permissions']) || 
-                        in_array('all', $_SESSION['staff_permissions']))
-                      )): ?>
+                        <?php if ($_SESSION['user_type'] === 'admin' || 
+                                            (isset($_SESSION['staff_permissions']) && 
+                                             (in_array('table_management', $_SESSION['staff_permissions']) || 
+                                                in_array('table_management_qr', $_SESSION['staff_permissions']) || 
+                                                in_array('all', $_SESSION['staff_permissions']))
+                                            )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'qr_codes.php' ? 'active' : ''; ?>" href="qr_codes.php">
                     <i class="fas fa-qrcode"></i>
@@ -343,11 +345,12 @@ if (!$has_permissions) {
     <div class="menu-section">
         <h6 class="menu-title">Analytics & Settings</h6>
         <ul class="nav flex-column">
-            <?php if ($_SESSION['user_type'] === 'admin' || 
-                      (isset($_SESSION['staff_permissions']) && 
-                       (in_array('view_reports', $_SESSION['staff_permissions']) || 
-                        in_array('all', $_SESSION['staff_permissions']))
-                      )): ?>
+                        <?php if ($_SESSION['user_type'] === 'admin' || 
+                                            (isset($_SESSION['staff_permissions']) && 
+                                             (in_array('view_reports', $_SESSION['staff_permissions']) || 
+                                                in_array('view_sales', $_SESSION['staff_permissions']) || 
+                                                in_array('all', $_SESSION['staff_permissions']))
+                                            )): ?>
             <li class="nav-item">
                 <a class="nav-link <?php echo $current_page == 'reports.php' ? 'active' : ''; ?>" href="reports.php">
                     <i class="fas fa-chart-line"></i>

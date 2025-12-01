@@ -41,9 +41,11 @@ if (!$auth->isLoggedIn()) {
 }
 
 // Check if user has permission to manage QR codes
+// Accept either 'table_management' (older key) or 'table_management_qr' (used in staff permissions UI)
 if ($_SESSION['user_type'] !== 'admin' && 
     (!isset($_SESSION['staff_permissions']) || 
     (!in_array('table_management', $_SESSION['staff_permissions']) && 
+     !in_array('table_management_qr', $_SESSION['staff_permissions']) && 
      !in_array('all', $_SESSION['staff_permissions'])))) {
     header('Location: dashboard.php?message=' . urlencode('You do not have permission to manage QR codes') . '&type=warning');
     exit();

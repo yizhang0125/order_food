@@ -114,12 +114,20 @@ try {
                 'latest_payment_date' => $payment['payment_date'],
                 'items_list' => [],
                 'item_count' => 0,
-                'processed_by_name' => $payment['processed_by_name']
+                'processed_by_name' => $payment['processed_by_name'],
+                'latest_payment_amount' => 0
             ];
         }
         
-        // Recalculate ALL payments with service tax (both old and new)
-        $payment_amount = recalculatePaymentAmount($payment['item_details'], $systemSettings);
+        // Prefer the stored payment amount (this represents the actual paid amount,
+        // which is important when bills are merged). Fall back to recalculation
+        // from item details if `p.amount` is not present or zero.
+        if (isset($payment['amount']) && $payment['amount'] !== null && $payment['amount'] !== '') {
+            $payment_amount = floatval($payment['amount']);
+        } else {
+            // Recalculate payments with service tax (both old and new)
+            $payment_amount = recalculatePaymentAmount($payment['item_details'], $systemSettings);
+        }
         
         // Add payment details
         $grouped_payments[$key]['payment_count']++;
@@ -143,11 +151,12 @@ try {
         }
         $grouped_payments[$key]['item_count'] += $payment['item_count'];
         
-        // Update latest payment date if this one is newer
+        // Update latest payment date and track its amount if this one is newer
         if (strtotime($payment['payment_date']) > strtotime($grouped_payments[$key]['latest_payment_date'])) {
             $grouped_payments[$key]['latest_payment_date'] = $payment['payment_date'];
             $grouped_payments[$key]['cash_received'] = $payment['cash_received'];
             $grouped_payments[$key]['change_amount'] = $payment['change_amount'];
+            $grouped_payments[$key]['latest_payment_amount'] = $payment_amount;
         }
     }
     
@@ -160,9 +169,14 @@ try {
         $group['payment_amounts_array'] = $group['payment_amounts'];
         $group['items_list'] = implode(', ', $group['items_list']);
         
-        // Ensure change amount is calculated correctly for grouped payments
+        // Determine display amount: when multiple payments are grouped (merged),
+        // show the latest payment amount (the merged bill) rather than the summed total.
+        $group['display_amount'] = (
+            isset($group['payment_amounts']) && count($group['payment_amounts']) > 1
+        ) ? $group['latest_payment_amount'] : $group['total_amount'];
+
+        // Recalculate change amount to be based on the display amount for grouped payments
         if (count($group['payment_amounts_array']) > 1) {
-            // Only calculate change for cash payments
             $has_cash_payment = false;
             foreach ($group['payment_methods'] as $method) {
                 if ($method !== 'tng_pay') {
@@ -170,15 +184,14 @@ try {
                     break;
                 }
             }
-            
+
             if ($has_cash_payment) {
-                $group['change_amount'] = floatval($group['cash_received']) - $group['total_amount'];
+                $group['change_amount'] = floatval($group['cash_received']) - floatval($group['display_amount']);
             } else {
-                // All TNG payments - no change amount
                 $group['change_amount'] = 0;
             }
         }
-        
+
         $payments[] = $group;
     }
     
@@ -532,12 +545,7 @@ ob_start();
             <div class="total-payments">
                 Showing <?php echo count($payments); ?> grouped entries (<?php echo $total_payments; ?> total payments)
             </div>
-            <a href="export_payments.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>" 
-               class="export-btn"
-               target="_blank">
-                <i class="fas fa-download"></i>
-                Export to Excel
-            </a>
+            <!-- Export to Excel button removed per request -->
         </div>
     </div>
 </div>

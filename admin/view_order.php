@@ -184,10 +184,20 @@ ob_start();
                                         </span>
                                     </td>
                                     <td>
-                                        <?php if (!empty($item['instructions'])): ?>
+                                        <?php
+                                        // Order items may store special instructions under 'special_instructions'
+                                        // or (in other parts of the app) under 'instructions'. Support both.
+                                        $instr = '';
+                                        if (!empty($item['special_instructions'])) {
+                                            $instr = $item['special_instructions'];
+                                        } elseif (!empty($item['instructions'])) {
+                                            $instr = $item['instructions'];
+                                        }
+                                        ?>
+                                        <?php if (!empty($instr)): ?>
                                             <div class="special-instructions">
                                                 <i class="fas fa-comment-alt"></i>
-                                                <?php echo htmlspecialchars($item['instructions']); ?>
+                                                <?php echo htmlspecialchars($instr); ?>
                                             </div>
                                         <?php else: ?>
                                             <span class="text-muted">No special instructions</span>
@@ -309,12 +319,7 @@ ob_start();
                             <i class="fas fa-arrow-left"></i>
                             Back to Orders
                         </a>
-                        <?php if ($order['status'] == 'completed'): ?>
-                        <button class="btn btn-outline-info" onclick="viewOrderHistory()">
-                            <i class="fas fa-history"></i>
-                            View Order History
-                        </button>
-                        <?php endif; ?>
+                        <!-- View Order History removed per request -->
                     </div>
                 </div>
             </div>
@@ -783,10 +788,7 @@ $extra_js = '
         };
     }
     
-    function viewOrderHistory() {
-        // This could be expanded to show order status changes
-        alert("Order history feature coming soon!");
-    }
+    // Order history feature removed.
 </script>';
 
 // Include the layout

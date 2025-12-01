@@ -169,7 +169,7 @@ ob_start();
                                 'description' => 'Access to all system features'
                             ],
                             'kitchen_view' => [
-                                'icon' => 'fa-kitchen-set',
+                                'icon' => 'fa-utensils',
                                 'color' => '#10B981',
                                 'description' => 'View and update kitchen order status'
                             ],
@@ -211,6 +211,8 @@ ob_start();
                         ];
                         
                         foreach ($permissions as $perm): 
+                            // Skip deprecated/internal-only permission 'view_dashboard' from UI
+                            if (isset($perm['name']) && $perm['name'] === 'view_dashboard') continue;
                             $permInfo = $permissionIcons[$perm['name']] ?? [
                                 'icon' => 'fa-lock',
                                 'color' => '#64748B',

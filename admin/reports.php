@@ -20,9 +20,11 @@ if (!$auth->isLoggedIn()) {
 }
 
 // Check if user has permission to view reports
+// Accept either 'view_reports' (new key) or 'view_sales' (existing DB/legacy key)
 if ($_SESSION['user_type'] !== 'admin' && 
     (!isset($_SESSION['staff_permissions']) || 
     (!in_array('view_reports', $_SESSION['staff_permissions']) && 
+     !in_array('view_sales', $_SESSION['staff_permissions']) && 
      !in_array('all', $_SESSION['staff_permissions'])))) {
     header('Location: dashboard.php');
     exit();

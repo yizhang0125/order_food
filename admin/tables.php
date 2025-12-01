@@ -415,29 +415,6 @@ ob_start();
                 <!-- Table Actions -->
                 <div class="table-actions">
                     <div class="action-buttons">
-                        <!-- Occupied-specific actions -->
-                        <?php if ($is_occupied): ?>
-                        <button type="button" class="btn-action btn-clear" 
-                                data-bs-toggle="modal" 
-                                data-bs-target="#clearTableModal<?php echo $table['id']; ?>"
-                                title="Clear Table Orders">
-                            <i class="fas fa-broom"></i>
-                        </button>
-                        <button type="button" class="btn-action btn-free" 
-                                data-bs-toggle="modal" 
-                                data-bs-target="#freeTableModal<?php echo $table['id']; ?>"
-                                title="Mark as Available">
-                            <i class="fas fa-check-circle"></i>
-                        </button>
-                        <?php else: ?>
-                        <button type="button" class="btn-action btn-occupy" 
-                                data-bs-toggle="modal" 
-                                data-bs-target="#occupyTableModal<?php echo $table['id']; ?>"
-                                title="Mark as Occupied">
-                            <i class="fas fa-user-plus"></i>
-                        </button>
-                        <?php endif; ?>
-                        
                         <!-- Standard actions -->
                         <button type="button" class="btn-action btn-edit" 
                                 data-bs-toggle="modal" 
@@ -553,102 +530,6 @@ ob_start();
     </div>
 </div>
 
-<!-- Clear Table Orders Modal -->
-<div class="modal fade" id="clearTableModal<?php echo $table['id']; ?>" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Clear Table Orders</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to complete all pending orders for Table <?php echo htmlspecialchars($table['table_number']); ?>?</p>
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle me-2"></i>
-                    This will mark all pending and processing orders as completed. Completed orders will remain unchanged.
-                </div>
-                <?php if ($table['pending_orders'] > 0): ?>
-                <p><strong>Pending orders to be completed: <?php echo $table['pending_orders']; ?></strong></p>
-                <?php else: ?>
-                <p><strong>No pending orders to clear.</strong></p>
-                <?php endif; ?>
-                <?php if ($table['today_orders'] > 0): ?>
-                <p><small class="text-muted">Total orders today: <?php echo $table['today_orders']; ?> (including completed orders)</small></p>
-                <?php endif; ?>
-            </div>
-            <form method="POST">
-                <div class="modal-footer">
-                    <input type="hidden" name="table_id" value="<?php echo $table['id']; ?>">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="clear_table_orders" class="btn btn-warning">
-                        <i class="fas fa-broom me-2"></i>Clear Orders
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Free Table Modal -->
-<div class="modal fade" id="freeTableModal<?php echo $table['id']; ?>" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Mark Table as Available</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to mark Table <?php echo htmlspecialchars($table['table_number']); ?> as available?</p>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle me-2"></i>
-                    This will mark the table as available for new customers. Existing orders will remain unchanged.
-                </div>
-                <?php if ($table['today_orders'] > 0): ?>
-                <p><small class="text-muted">Note: This table has <?php echo $table['today_orders']; ?> orders today, but will still show as available.</small></p>
-                <?php endif; ?>
-            </div>
-            <form method="POST">
-                <div class="modal-footer">
-                    <input type="hidden" name="table_id" value="<?php echo $table['id']; ?>">
-                    <input type="hidden" name="action" value="free">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="toggle_occupied" class="btn btn-success">
-                        <i class="fas fa-check-circle me-2"></i>Mark as Available
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Occupy Table Modal -->
-<div class="modal fade" id="occupyTableModal<?php echo $table['id']; ?>" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Mark Table as Occupied</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to mark Table <?php echo htmlspecialchars($table['table_number']); ?> as occupied?</p>
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    This will mark the table as occupied and prevent new orders.
-                </div>
-            </div>
-            <form method="POST">
-                <div class="modal-footer">
-                    <input type="hidden" name="table_id" value="<?php echo $table['id']; ?>">
-                    <input type="hidden" name="action" value="occupy">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" name="toggle_occupied" class="btn btn-warning">
-                        <i class="fas fa-user-plus me-2"></i>Mark as Occupied
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 <?php endforeach; ?>
 
 <?php

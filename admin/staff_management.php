@@ -29,18 +29,24 @@ $message = '';
 $message_type = '';
 
 // Resolve current user's permissions
-try {
-    $current_staff_id = isset($_SESSION['admin_id']) ? $_SESSION['admin_id'] : null;
-    $current_permissions = $current_staff_id ? $staffController->getStaffPermissionNames($current_staff_id) : [];
-} catch (Exception $e) {
-    $current_permissions = [];
+// Prefer permissions stored in session (set at login). Fall back to DB lookup if needed.
+if (isset($_SESSION['staff_permissions']) && is_array($_SESSION['staff_permissions'])) {
+    $current_permissions = $_SESSION['staff_permissions'];
+} else {
+    try {
+        $current_user_id = $_SESSION['admin_id'] ?? $_SESSION['staff_id'] ?? null;
+        $current_permissions = $current_user_id ? $staffController->getStaffPermissionNames($current_user_id) : [];
+    } catch (Exception $e) {
+        $current_permissions = [];
+    }
 }
 
 // Helper permission checks
-$can_view_staff = in_array('staff.view', $current_permissions) || isset($_SESSION['admin_id']);
-$can_add_staff = in_array('staff.add', $current_permissions) || isset($_SESSION['admin_id']);
-$can_edit_staff = in_array('staff.edit', $current_permissions) || isset($_SESSION['admin_id']);
-$can_delete_staff = in_array('staff.delete', $current_permissions) || isset($_SESSION['admin_id']);
+// Accept either the granular 'staff.*' permissions or the legacy 'staff_management' flag
+$can_view_staff = in_array('staff.view', $current_permissions) || in_array('staff_management', $current_permissions) || isset($_SESSION['admin_id']);
+$can_add_staff = in_array('staff.add', $current_permissions) || in_array('staff_management', $current_permissions) || isset($_SESSION['admin_id']);
+$can_edit_staff = in_array('staff.edit', $current_permissions) || in_array('staff_management', $current_permissions) || isset($_SESSION['admin_id']);
+$can_delete_staff = in_array('staff.delete', $current_permissions) || in_array('staff_management', $current_permissions) || isset($_SESSION['admin_id']);
 
 // Get available permissions
 try {
@@ -347,7 +353,15 @@ function editStaff(staffId) {
 
 function deleteStaff(staffId) {
     const staffCard = document.querySelector(`[data-staff-id="${staffId}"]`);
-    const staffName = staffCard ? staffCard.querySelector('.card-title').textContent : 'this staff member';
+    // Find a sensible element to read the staff member's display name from.
+    // Use `.staff-name` (the actual class used in the card). Fall back to other selectors if needed.
+    let staffName = 'this staff member';
+    if (staffCard) {
+        const nameEl = staffCard.querySelector('.staff-name') || staffCard.querySelector('h5') || staffCard.querySelector('.card-title');
+        if (nameEl && nameEl.textContent) {
+            staffName = nameEl.textContent.trim();
+        }
+    }
 
     Swal.fire({
         title: 'Delete Staff Member',

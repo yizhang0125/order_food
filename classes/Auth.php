@@ -138,5 +138,55 @@ class Auth {
             exit();
         }
     }
+
+    /**
+     * Update password for the current logged-in user (admin or staff).
+     * If $user_id is provided it will be used, otherwise session IDs are used.
+     * Returns true on success, false on failure (e.g., current password mismatch).
+     */
+    public function updatePassword($user_id = null, $current_password, $new_password) {
+        try {
+            // Prefer explicit user_id if provided, otherwise use session
+            $adminId = $user_id ?? ($_SESSION['admin_id'] ?? null);
+            $staffId = $_SESSION['staff_id'] ?? null;
+
+            // If adminId is set and exists in admins table, treat as admin
+            if ($adminId) {
+                $query = "SELECT id, password FROM admins WHERE id = ?";
+                $stmt = $this->conn->prepare($query);
+                $stmt->execute([$adminId]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$row) return false;
+                if (!password_verify($current_password, $row['password'])) {
+                    return false;
+                }
+                $hash = password_hash($new_password, PASSWORD_DEFAULT);
+                $update = "UPDATE admins SET password = ? WHERE id = ?";
+                $ustmt = $this->conn->prepare($update);
+                return $ustmt->execute([$hash, $adminId]);
+            }
+
+            // Otherwise, try staff
+            if ($staffId) {
+                $query = "SELECT id, password FROM staff WHERE id = ?";
+                $stmt = $this->conn->prepare($query);
+                $stmt->execute([$staffId]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$row) return false;
+                if (!password_verify($current_password, $row['password'])) {
+                    return false;
+                }
+                $hash = password_hash($new_password, PASSWORD_DEFAULT);
+                $update = "UPDATE staff SET password = ? WHERE id = ?";
+                $ustmt = $this->conn->prepare($update);
+                return $ustmt->execute([$hash, $staffId]);
+            }
+
+            return false;
+        } catch (Exception $e) {
+            error_log("Error updating password: " . $e->getMessage());
+            return false;
+        }
+    }
 }
 ?> 
